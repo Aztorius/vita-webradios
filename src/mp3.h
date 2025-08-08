@@ -6,10 +6,11 @@
 int MP3_Init(const char *path);
 SceUInt32 MP3_GetSampleRate(void);
 SceUInt8 MP3_GetChannels(void);
-void MP3_Decode(void *buf, unsigned int length, void *userdata);
+int MP3_Decode(void *buf, unsigned int length);
 SceUInt64 MP3_GetPosition(void);
 SceUInt64 MP3_GetLength(void);
 SceUInt64 MP3_Seek(SceUInt64 index);
 void MP3_Term(void);
+SceBool MP3_playing(void);
 
 #endif

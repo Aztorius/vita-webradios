@@ -22,15 +22,17 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 add_executable(${PROJECT_NAME}
   src/main.c
   src/debugScreen.c
+  src/mp3.c
 )
 
 target_link_libraries(${PROJECT_NAME}
-  m
   SceDisplay_stub
   SceCtrl_stub
   SceAudio_stub
   SceAudiodec_stub
   SceLibKernel_stub
+  mpg123
+  m
 )
 
 vita_create_self(${PROJECT_NAME}.self ${PROJECT_NAME})

@@ -3,7 +3,7 @@
 #include <string.h>
 
 #include "audio.h"
-#include "config.h"
+// #include "config.h"
 
 // For MP3 ID3 tags
 struct genre {
@@ -34,6 +34,7 @@ static mpg123_handle *mp3;
 static off_t frames_read = 0, total_samples = 0;
 static long sample_rate = 0;
 static int channels = 0;
+static SceBool playing = SCE_FALSE;
 
 // For MP3 ID3 tags
 // Helper for v1 printing, get these strings their zero byte.
@@ -114,6 +115,10 @@ static void print_v2(Audio_Metadata *ID3tag, mpg123_id3v2 *v2) {
 	print_lines(ID3tag->genre, "",   v2->genre);
 }
 
+SceBool MP3_playing() {
+	return playing;
+}
+
 int MP3_Init(const char *path) {
 	int error = mpg123_init();
 	if (error != MPG123_OK)
@@ -136,7 +141,7 @@ int MP3_Init(const char *path) {
 	if (error != MPG123_OK)
 		return error;
 
-	error = mpg123_open(mp3, path);
+	error = mpg123_open(mp3, path); //TODO : use mpg123_open_fd() or mpg123_open_feed() for URLs
 	if (error != MPG123_OK)
 		return error;
 
@@ -152,23 +157,23 @@ int MP3_Init(const char *path) {
 		if (v2 != NULL) {
 			print_v2(&metadata, v2);
 
-			if (config.meta_mp3) {
-				for (size_t count = 0; count < v2->pictures; count++) {
-					mpg123_picture *pic = &v2->picture[count];
-					char *str = pic->mime_type.p;
+			// if (config.meta_mp3) {
+			// 	for (size_t count = 0; count < v2->pictures; count++) {
+			// 		mpg123_picture *pic = &v2->picture[count];
+			// 		char *str = pic->mime_type.p;
 
-					if ((pic->type == 3 ) || (pic->type == 0)) {
-						if ((!strcasecmp(str, "image/jpg")) || (!strcasecmp(str, "image/jpeg"))) {
-							metadata.cover_image = vita2d_load_JPEG_buffer(pic->data, pic->size);
-							break;
-						}
-						else if (!strcasecmp(str, "image/png")) {
-							metadata.cover_image = vita2d_load_PNG_buffer(pic->data);
-							break;
-						}
-					}
-				}
-			}
+			// 		if ((pic->type == 3 ) || (pic->type == 0)) {
+			// 			if ((!strcasecmp(str, "image/jpg")) || (!strcasecmp(str, "image/jpeg"))) {
+			// 				metadata.cover_image = vita2d_load_JPEG_buffer(pic->data, pic->size);
+			// 				break;
+			// 			}
+			// 			else if (!strcasecmp(str, "image/png")) {
+			// 				metadata.cover_image = vita2d_load_PNG_buffer(pic->data);
+			// 				break;
+			// 			}
+			// 		}
+			// 	}
+			// }
 		}
 	}
 
@@ -187,15 +192,21 @@ SceUInt8 MP3_GetChannels(void) {
 	return channels;
 }
 
-void MP3_Decode(void *buf, unsigned int length, void *userdata) {
+int MP3_Decode(void *buf, unsigned int length) {
 	int ret = 0;
 	size_t done = 0;
 
-	ret = mpg123_read(mp3, buf, length * (sizeof(SceInt16) * 2), &done);
+	ret = mpg123_read(mp3, buf, length, &done);
 	frames_read = mpg123_tell(mp3);
 
-	if (frames_read >= total_samples || ret == MPG123_DONE)
+	if (frames_read >= total_samples || ret == MPG123_DONE) {
 		playing = SCE_FALSE;
+		ret = 0;
+	} else if (ret == 0) {
+		playing = SCE_TRUE;
+	}
+
+	return ret;
 }
 
 SceUInt64 MP3_GetPosition(void) {

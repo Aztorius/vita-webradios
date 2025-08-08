@@ -8,66 +8,45 @@
 #include <psp2/kernel/clib.h>
 
 #include "debugScreen.h"
-
-// #define countof(A) sizeof(A)/sizeof(*A)
-// #define MIN(A,B) ((A)<(B)?(A):(B))
-// #define MAX(A,B) ((A)>(B)?(A):(B))
+#include "mp3.h"
 
 // #define printf psvDebugScreenPrintf
+#define printf sceClibPrintf
 
-int printf(const char* str, ...) {
-    psvDebugScreenPrintf(str);
-    sceClibPrintf(str);
-}
-
-typedef double (*wav_gen)(double);
-
-// void wave_set(int16_t*buffer, size_t size,  wav_gen generator){
-// 	for (size_t smpl = 0; smpl < size; ++smpl)
-// 		buffer[smpl] = 0x7FFF*generator((float)smpl/(float)size);
-// }
+#define BUFFER_LENGTH 8192
+#define NSAMPLES 2048
 
 int main(void) {
 	psvDebugScreenInit();
 
 	int freqs[] = {8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000};
-	int size = 256;
-	int freq = 8;
-	int mode = SCE_AUDIO_OUT_MODE_MONO;
+	int size = NSAMPLES;
+	int freq = 7;
+	int mode = SCE_AUDIO_OUT_MODE_STEREO; // SCE_AUDIO_OUT_MODE_MONO;
 	int vol = SCE_AUDIO_VOLUME_0DB;
 
 	int port = sceAudioOutOpenPort(SCE_AUDIO_OUT_PORT_TYPE_BGM, size, freqs[freq], mode);
+	sceAudioOutSetConfig(port, -1, -1, -1);
 	sceAudioOutSetVolume(port, SCE_AUDIO_VOLUME_FLAG_L_CH |SCE_AUDIO_VOLUME_FLAG_R_CH, (int[]){vol,vol});
 
-    int handle = fopen("test.mp3");
-    if (!handle) {
-        printf("ERROR: test.mp3 not found !");
-        sceAudioOutReleasePort(port);
-        return 0;
-    }
-    sceAudiodecInitParam param;
+	int ret = MP3_Init("test.mp3");
+	if (ret) {
+		printf("MP3_Init %i\n", ret);
+		sceAudioOutReleasePort(port);
+		return 0;
+	}
 
-    if (sceAudiodecInitLibrary(SCE_AUDIODEC_TYPE_MP3, &param) < 0) {
-        printf("ERROR: sceAudiodecInitLibrary");
-        sceAudioOutReleasePort(port);
-        return 0;
-    }
-    sceAudiodecCtrl audioCtrl;
-    audioCtrl.handle = handle;
-    if (sceAudiodecCreateDecoder(&audioCtrl, SCE_AUDIODEC_TYPE_MP3) < 0) {
-        printf("ERROR: sceAudiodecCreateDecoder");
-        sceAudiodecTermLibrary(SCE_AUDIODEC_TYPE_MP3);
-        sceAudioOutReleasePort(port);
-        return 0;
-    }
+	printf("samplerate %u\n", MP3_GetSampleRate());
+	printf("channels %u\n", MP3_GetChannels());
+	MP3_Seek(0);
 
-	int16_t wave_buf[SCE_AUDIO_MAX_LEN]={0};
-	wav_gen gen=gen_nul;
+	unsigned char buffer[BUFFER_LENGTH] = {0};
 	SceCtrlData ctrl_peek, ctrl_press;
+
 	do{
-		// ctrl_press = ctrl_peek;
-		// sceCtrlPeekBufferPositive(0, &ctrl_peek, 1);
-		// ctrl_press.buttons = ctrl_peek.buttons & ~ctrl_press.buttons;
+		ctrl_press = ctrl_peek;
+		sceCtrlPeekBufferPositive(0, &ctrl_peek, 1);
+		ctrl_press.buttons = ctrl_peek.buttons & ~ctrl_press.buttons;
 
 		// if(ctrl_press.buttons == SCE_CTRL_CIRCLE)
 		// 	gen=gen_sin;
@@ -100,16 +79,17 @@ int main(void) {
 		// if(ctrl_press.buttons & (SCE_CTRL_UP|SCE_CTRL_DOWN))
 		// 	sceAudioOutSetVolume(port, SCE_AUDIO_VOLUME_FLAG_L_CH |SCE_AUDIO_VOLUME_FLAG_R_CH, (int[]){vol,vol});
 
+		ret = MP3_Decode(buffer, BUFFER_LENGTH);
+		if (ret) {
+			printf("MP3_Decode %i", ret);
+			break;
+		}
 
-		sceAudioOutOutput(port, wave_buf);
-        printf("Hello world ! Listening...");
-	}while(ctrl_press.buttons != SCE_CTRL_START);
+		sceAudioOutOutput(port, buffer);
+        // printf("Hello world ! Listening...\n");
+	}while(MP3_playing() && ctrl_press.buttons != SCE_CTRL_START);
 
-    sceAudiodecDeleteDecoder(&audioCtrl);
-    sceAudiodecTermLibrary(SCE_AUDIODEC_TYPE_MP3);
-
-    fclose(handle);
-
+	MP3_Term();
 	sceAudioOutReleasePort(port);
 	return 0;
 }

@@ -3,7 +3,7 @@
 
 #include <psp2/types.h>
 
-extern SceBool playing, paused;
+// extern SceBool playing, paused;
 
 typedef struct {
 	SceBool has_meta;
@@ -13,10 +13,10 @@ typedef struct {
     char year[64];
     char comment[64];
     char genre[64];
-    vita2d_texture *cover_image;
+    // vita2d_texture *cover_image;
 } Audio_Metadata;
 
-extern Audio_Metadata metadata;
+Audio_Metadata metadata;
 
 int Audio_Init(const char *path);
 SceBool Audio_IsPaused(void);
