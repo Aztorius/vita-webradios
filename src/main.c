@@ -4,8 +4,15 @@
 #include <psp2/ctrl.h>
 #include <psp2/audiodec.h>
 #include <psp2/audioout.h>
-#include <psp2/kernel/processmgr.h>
 #include <psp2/kernel/clib.h>
+#include <psp2/kernel/processmgr.h>
+#include <psp2/kernel/sysmem.h>
+#include <psp2/libssl.h>
+#include <psp2/net/http.h>
+#include <psp2/net/net.h>
+#include <psp2/net/netctl.h>
+#include <psp2/paf.h>
+#include <psp2/sysmodule.h>
 
 #include "debugScreen.h"
 #include "mp3.h"
@@ -16,8 +23,185 @@
 #define BUFFER_LENGTH 8192
 #define NSAMPLES 2048
 
+int open_webradio(char *url, int port) {
+
+	int res, tpl, conn, req;
+	SceUInt64 length = 0;
+
+	SceUID fd;
+	void *recv_buffer = NULL;
+
+	SceNetInitParam net_init_param;
+	net_init_param.size = 0x800000;
+	net_init_param.flags = 0;
+
+	SceUID memid = sceKernelAllocMemBlock("SceNetMemory", 0x0C20D060, net_init_param.size, NULL);
+	if(memid < 0){
+		sceClibPrintf("sceKernelAllocMemBlock failed (0x%X)\n", memid);
+		return memid;
+	}
+
+	sceKernelGetMemBlockBase(memid, &net_init_param.memory);
+
+	res = sceNetInit(&net_init_param);
+	if(res < 0){
+		sceClibPrintf("sceNetInit failed (0x%X)\n", res);
+		goto free_memblk;
+	}
+
+	res = sceNetCtlInit();
+	if(res < 0){
+		sceClibPrintf("sceNetCtlInit failed (0x%X)\n", res);
+		goto net_term;
+	}
+
+	res = sceHttpInit(0x800000);
+	if(res < 0){
+		sceClibPrintf("sceHttpInit failed (0x%X)\n", res);
+		goto netctl_term;
+	}
+
+	res = sceSslInit(0x800000);
+	if(res < 0){
+		sceClibPrintf("sceSslInit failed (0x%X)\n", res);
+		goto http_term;
+	}
+
+	tpl = sceHttpCreateTemplate("PSP2 GITHUB", 2, 1);
+	if(tpl < 0){
+		sceClibPrintf("sceHttpCreateTemplate failed (0x%X)\n", tpl);
+		goto ssl_term;
+	}
+
+	res = sceHttpAddRequestHeader(tpl, "Accept", "audio/mpeg", SCE_HTTP_HEADER_ADD);
+	sceClibPrintf("sceHttpAddRequestHeader=0x%X\n", res);
+
+	conn = sceHttpCreateConnectionWithURL(tpl, url, 0);
+	if(conn < 0){
+		sceClibPrintf("sceHttpCreateConnectionWithURL failed (0x%X)\n", conn);
+		goto http_del_temp;
+	}
+
+	req = sceHttpCreateRequestWithURL(conn, 0, url, 0);
+	if(req < 0){
+		sceClibPrintf("sceHttpCreateRequestWithURL failed (0x%X)\n", req);
+		goto http_del_conn;
+	}
+
+	res = sceHttpSendRequest(req, NULL, 0);
+	if(res < 0){
+		sceClibPrintf("sceHttpSendRequest failed (0x%X)\n", res);
+		goto http_del_req;
+	}
+
+	res = sceHttpGetResponseContentLength(req, &length);
+	sceClibPrintf("sceHttpGetResponseContentLength=%i\n", res);
+
+	if(res < 0){
+		recv_buffer = sce_paf_memalign(0x40, BUFFER_LENGTH);
+		if(recv_buffer == NULL){
+			sceClibPrintf("sce_paf_memalign return to NULL\n");
+			goto http_abort_req;
+		}
+
+		unsigned char outbuffer[BUFFER_LENGTH] = {0};
+
+		res = sceHttpReadData(req, recv_buffer, BUFFER_LENGTH);
+		if (res > 0) {
+			int ret = MP3_FirstDecode(recv_buffer, BUFFER_LENGTH, outbuffer, BUFFER_LENGTH);
+			if (ret) {
+				printf("MP3_FirstDecode error: %i", ret);
+			}
+		}
+
+		do {
+			res = sceHttpReadData(req, recv_buffer, BUFFER_LENGTH);
+			if (res > 0){
+				int ret = 0;
+				int outsize = 0;
+				do {
+					ret = MP3_Decode(recv_buffer, res, outbuffer, BUFFER_LENGTH, &outsize);
+					if (ret) {
+						printf("Error: %i", ret);
+						break;
+					}
+					sceAudioOutOutput(port, outbuffer);
+				} while (ret == 0 && outsize > 0); // while not MPG123_NEED_MORE
+			}
+		} while(res > 0);
+	}else{
+		sceClibPrintf("length=0x%llX\n", length);
+
+		recv_buffer = sce_paf_memalign(0x40, (SceSize)length);
+		if(recv_buffer == NULL){
+			sceClibPrintf("sce_paf_memalign return to NULL. length=0x%08X\n", (SceSize)length);
+			goto http_abort_req;
+		}
+
+		res = sceHttpReadData(req, recv_buffer, (SceSize)length);
+		if(res > 0){
+			// sceIoWrite(fd, recv_buffer, res);
+			printf("This is a fixed size request ?!");
+		}
+	}
+
+http_abort_req:
+	sceHttpAbortRequest(req);
+
+http_del_req:
+	sceHttpDeleteRequest(req);
+	req = -1;
+
+http_del_conn:
+	sceHttpDeleteConnection(conn);
+	conn = -1;
+
+http_del_temp:
+	sceHttpDeleteTemplate(tpl);
+	tpl = -1;
+
+ssl_term:
+	sceSslTerm();
+
+http_term:
+	sceHttpTerm();
+
+netctl_term:
+	sceNetCtlTerm();
+
+net_term:
+	sceNetTerm();
+
+free_memblk:
+	sceKernelFreeMemBlock(memid);
+	memid = -1;
+
+	sce_paf_free(recv_buffer);
+	recv_buffer = NULL;
+
+	return 0;
+}
+
 int main(void) {
 	psvDebugScreenInit();
+
+	int res;
+	SceUInt32 paf_init_param[6];
+	SceSysmoduleOpt sysmodule_opt;
+
+	paf_init_param[0] = 0x4000000;
+	paf_init_param[1] = 0;
+	paf_init_param[2] = 0;
+	paf_init_param[3] = 0;
+	paf_init_param[4] = 0x400;
+	paf_init_param[5] = 1;
+
+	res = ~0;
+	sysmodule_opt.flags  = 0;
+	sysmodule_opt.result = &res;
+
+	sceSysmoduleLoadModuleInternalWithArg(SCE_SYSMODULE_INTERNAL_PAF, sizeof(paf_init_param), &paf_init_param, &sysmodule_opt);
+	sceSysmoduleLoadModule(SCE_SYSMODULE_HTTPS);
 
 	int freqs[] = {8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000};
 	int size = NSAMPLES;
@@ -29,67 +213,43 @@ int main(void) {
 	sceAudioOutSetConfig(port, -1, -1, -1);
 	sceAudioOutSetVolume(port, SCE_AUDIO_VOLUME_FLAG_L_CH |SCE_AUDIO_VOLUME_FLAG_R_CH, (int[]){vol,vol});
 
-	int ret = MP3_Init("test.mp3");
+	int ret = MP3_Init();
 	if (ret) {
 		printf("MP3_Init %i\n", ret);
 		sceAudioOutReleasePort(port);
 		return 0;
 	}
 
-	printf("samplerate %u\n", MP3_GetSampleRate());
-	printf("channels %u\n", MP3_GetChannels());
-	MP3_Seek(0);
+	// printf("samplerate %u\n", MP3_GetSampleRate());
+	// printf("channels %u\n", MP3_GetChannels());
 
-	unsigned char buffer[BUFFER_LENGTH] = {0};
+	// unsigned char inbuffer[BUFFER_LENGTH] = {0};
 	SceCtrlData ctrl_peek, ctrl_press;
 
-	do{
-		ctrl_press = ctrl_peek;
-		sceCtrlPeekBufferPositive(0, &ctrl_peek, 1);
-		ctrl_press.buttons = ctrl_peek.buttons & ~ctrl_press.buttons;
+	// open_webradio("https://listen.radioking.com/radio/747505/stream/814189", port);
+	open_webradio("http://stream-eurodance90.fr/radio/8000/128.mp3", port); // disponible en HTTP et HTTPS
 
-		// if(ctrl_press.buttons == SCE_CTRL_CIRCLE)
-		// 	gen=gen_sin;
-		// if(ctrl_press.buttons == SCE_CTRL_SQUARE)
-		// 	gen=gen_sqr;
-		// if(ctrl_press.buttons == SCE_CTRL_TRIANGLE)
-		// 	gen=gen_tri;
-		// if(ctrl_press.buttons == SCE_CTRL_CROSS)
-		// 	gen=gen_nul;
-		// if(ctrl_press.buttons & (SCE_CTRL_CROSS|SCE_CTRL_TRIANGLE|SCE_CTRL_SQUARE|SCE_CTRL_CIRCLE))
-		// 	wave_set(wave_buf,size,gen);
+	// do{
+	// 	ctrl_press = ctrl_peek;
+	// 	sceCtrlPeekBufferPositive(0, &ctrl_peek, 1);
+	// 	ctrl_press.buttons = ctrl_peek.buttons & ~ctrl_press.buttons;
 
-		// if(ctrl_press.buttons == SCE_CTRL_RIGHT)
-		// 	freq = MIN(countof(freqs)-1, freq+1);
-		// if(ctrl_press.buttons == SCE_CTRL_LEFT)
-		// 	freq = MAX(0, freq-1);
-		// if(ctrl_press.buttons == SCE_CTRL_RTRIGGER)
-		// 	size = MIN(SCE_AUDIO_MAX_LEN,size+1000);
-		// if(ctrl_press.buttons == SCE_CTRL_LTRIGGER)
-		// 	size = MAX(SCE_AUDIO_MIN_LEN,size-1000);
-		// if(ctrl_press.buttons & (SCE_CTRL_RIGHT|SCE_CTRL_LEFT|SCE_CTRL_LTRIGGER|SCE_CTRL_RTRIGGER)){
-		// 	sceAudioOutSetConfig(port, size, freqs[freq], mode);
-		// 	wave_set(wave_buf,size,gen);
-		// }
+	// 	// TODO : get data from socket
 
-		// if(ctrl_press.buttons == SCE_CTRL_UP)
-		// 	vol = MIN(vol+1024,SCE_AUDIO_VOLUME_0DB);
-		// if(ctrl_press.buttons == SCE_CTRL_DOWN)
-		// 	vol = MAX(vol-1024,0);
-		// if(ctrl_press.buttons & (SCE_CTRL_UP|SCE_CTRL_DOWN))
-		// 	sceAudioOutSetVolume(port, SCE_AUDIO_VOLUME_FLAG_L_CH |SCE_AUDIO_VOLUME_FLAG_R_CH, (int[]){vol,vol});
+	// 	ret = MP3_Decode(inbuffer, BUFFER_LENGTH, outbuffer, BUFFER_LENGTH);
+	// 	if (ret) {
+	// 		printf("MP3_Decode %i", ret);
+	// 		break;
+	// 	}
 
-		ret = MP3_Decode(buffer, BUFFER_LENGTH);
-		if (ret) {
-			printf("MP3_Decode %i", ret);
-			break;
-		}
-
-		sceAudioOutOutput(port, buffer);
-        // printf("Hello world ! Listening...\n");
-	}while(MP3_playing() && ctrl_press.buttons != SCE_CTRL_START);
+	// 	sceAudioOutOutput(port, outbuffer);
+	// } while(ctrl_press.buttons != SCE_CTRL_START);
 
 	MP3_Term();
 	sceAudioOutReleasePort(port);
+
+	sceSysmoduleUnloadModule(SCE_SYSMODULE_HTTPS);
+	sceSysmoduleUnloadModuleInternal(SCE_SYSMODULE_INTERNAL_PAF);
+
 	return 0;
 }

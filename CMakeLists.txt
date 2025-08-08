@@ -26,10 +26,16 @@ add_executable(${PROJECT_NAME}
 )
 
 target_link_libraries(${PROJECT_NAME}
+  SceSsl_stub
+  SceHttp_stub
+  SceNetCtl_stub
+  SceNet_stub
   SceDisplay_stub
   SceCtrl_stub
   SceAudio_stub
   SceAudiodec_stub
+  ScePaf_stub
+  SceSysmem_stub
   SceLibKernel_stub
   mpg123
   m
