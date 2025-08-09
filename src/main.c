@@ -24,6 +24,20 @@
 #define BUFFER_LENGTH 8192
 #define NSAMPLES 2048
 
+enum player_state {
+	PLAYER_STATE_WAITING,
+	PLAYER_STATE_PLAYING,
+	PLAYER_STATE_STOPPING,
+};
+
+struct player {
+	enum player_state state;
+	int thread_id;
+	char *url;
+};
+
+static struct player player;
+
 int play_webradio(char *url) {
 
 	int res, tpl, conn, req;
@@ -130,7 +144,7 @@ int play_webradio(char *url) {
 				break;
 			}
 
-			while (!ret) {
+			while (!ret && player.state == PLAYER_STATE_PLAYING) {
 				// Decode and play until we run out of data
 				ret = MP3_Decode(NULL, 0, outbuffer, BUFFER_LENGTH, &outsize);
 				if (ret == -11) {
@@ -164,21 +178,10 @@ int play_webradio(char *url) {
 
 				sceAudioOutOutput(port, outbuffer);
 			}
-		} while(1);
-	}else{
+		} while(player.state == PLAYER_STATE_PLAYING);
+	} else {
 		sceClibPrintf("length=0x%llX\n", length);
-
-		recv_buffer = sce_paf_memalign(0x40, (SceSize)length);
-		if(recv_buffer == NULL){
-			sceClibPrintf("sce_paf_memalign return to NULL. length=0x%08X\n", (SceSize)length);
-			goto http_abort_req;
-		}
-
-		res = sceHttpReadData(req, recv_buffer, (SceSize)length);
-		if(res > 0){
-			// sceIoWrite(fd, recv_buffer, res);
-			printf("This is a fixed size request ?!");
-		}
+		printf("This is a fixed size request ?! Aborting");
 	}
 
 http_abort_req:
@@ -223,6 +226,23 @@ free_memblk:
 	return 0;
 }
 
+int http_thread() {
+	int playing = 0;
+	while (player.state != PLAYER_STATE_STOPPING)
+	{
+		if (!playing && player.state == PLAYER_STATE_PLAYING) {
+			playing = 1;
+			play_webradio(player.url);
+			playing = 0;
+			player.state = PLAYER_STATE_WAITING;
+		}
+
+		sceKernelDelayThread(200000); // Delay for 200 ms
+	}
+
+	return 0;
+}
+
 int main(void) {
 	psvDebugScreenInit();
 
@@ -246,16 +266,44 @@ int main(void) {
 
 	SceCtrlData ctrl_peek, ctrl_press;
 
+	int thid = 0;
+	thid = sceKernelCreateThread("httpThread", http_thread, 0x10000100, 0x10000, 0, 0, NULL);
+	if (thid < 0) {
+		sceClibPrintf("Error creating thread with id %i\n", thid);
+		return 1;
+	}
+
+	player.thread_id = thid;
+	player.state = PLAYER_STATE_WAITING;
+	sceKernelStartThread(thid, 0, 0);
+
 	do{
 		ctrl_press = ctrl_peek;
 		sceCtrlPeekBufferPositive(0, &ctrl_peek, 1);
 		ctrl_press.buttons = ctrl_peek.buttons & ~ctrl_press.buttons;
 
-		if (ctrl_press.buttons & SCE_CTRL_CROSS || 1) { // TODO : no autostart
-			// play_webradio("https://listen.radioking.com/radio/747505/stream/814189", port);
-			play_webradio("http://novazz.ice.infomaniak.ch/novazz-128.mp3"); // disponible en HTTP et HTTPS
+		if (ctrl_press.buttons & SCE_CTRL_CROSS) {
+			if (player.state == PLAYER_STATE_PLAYING) {
+				// We are already playing something
+				continue;
+			}
+			player.url = "http://novazz.ice.infomaniak.ch/novazz-128.mp3";
+			player.state = PLAYER_STATE_PLAYING;
+		} else if (ctrl_press.buttons & SCE_CTRL_CIRCLE) {
+			player.state = PLAYER_STATE_WAITING;
 		}
 	} while(ctrl_press.buttons != SCE_CTRL_START);
+
+	player.state = PLAYER_STATE_STOPPING;
+
+	int exitstatus = 0, timeout = 2000000;
+	int ret = sceKernelWaitThreadEnd(player.thread_id, &exitstatus, &timeout);
+    if (ret < 0 || exitstatus != 0)
+    {
+        sceClibPrintf("Error on thread exit. Exit status %i, return code %i\n", exitstatus, ret);
+    }
+
+    sceKernelDeleteThread(player.thread_id);
 
 	sceSysmoduleUnloadModule(SCE_SYSMODULE_HTTPS);
 	sceSysmoduleUnloadModuleInternal(SCE_SYSMODULE_INTERNAL_PAF);
