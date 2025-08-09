@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <string.h>
 #include <math.h>
 
 #include <psp2/ctrl.h>
@@ -98,37 +99,38 @@ int open_webradio(char *url, int port) {
 	sceClibPrintf("sceHttpGetResponseContentLength=%i\n", res);
 
 	if(res < 0){
-		recv_buffer = sce_paf_memalign(0x40, BUFFER_LENGTH);
+		recv_buffer = sce_paf_memalign(0x40, 0x10000);
 		if(recv_buffer == NULL){
 			sceClibPrintf("sce_paf_memalign return to NULL\n");
 			goto http_abort_req;
 		}
 
 		unsigned char outbuffer[BUFFER_LENGTH] = {0};
-
-		res = sceHttpReadData(req, recv_buffer, BUFFER_LENGTH);
-		if (res > 0) {
-			int ret = MP3_FirstDecode(recv_buffer, BUFFER_LENGTH, outbuffer, BUFFER_LENGTH);
-			if (ret) {
-				printf("MP3_FirstDecode error: %i", ret);
-			}
-		}
+		int outsize = 0;
 
 		do {
-			res = sceHttpReadData(req, recv_buffer, BUFFER_LENGTH);
-			if (res > 0){
-				int ret = 0;
-				int outsize = 0;
-				do {
-					ret = MP3_Decode(recv_buffer, res, outbuffer, BUFFER_LENGTH, &outsize);
-					if (ret) {
-						printf("Error: %i", ret);
-						break;
-					}
-					sceAudioOutOutput(port, outbuffer);
-				} while (ret == 0 && outsize > 0); // while not MPG123_NEED_MORE
+			res = sceHttpReadData(req, recv_buffer, 0x10000);
+			if (res <= 0) {
+				break;
 			}
-		} while(res > 0);
+			sceClibPrintf("sceHttpReadData: %i\n", res);
+			int ret = 0;
+			ret = MP3_Feed(recv_buffer, res);
+			if (ret) {
+				printf("MP3_Feed error: %i\n", ret);
+				break;
+			}
+
+			while (!ret) {
+				ret = MP3_Decode(NULL, 0, outbuffer, BUFFER_LENGTH, &outsize);
+				if (ret) {
+					printf("MP3_Decode error: %i\n", ret);
+					break;
+				}
+
+				sceAudioOutOutput(port, outbuffer);
+			}
+		} while(1);
 	}else{
 		sceClibPrintf("length=0x%llX\n", length);
 

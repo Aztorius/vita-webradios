@@ -6,7 +6,7 @@
 int MP3_Init(void);
 SceUInt32 MP3_GetSampleRate(void);
 SceUInt8 MP3_GetChannels(void);
-int MP3_FirstDecode(void *inbuf, unsigned int inlength, void *outbuf, unsigned int outlength);
+int MP3_Feed(void *inbuf, unsigned int inlength);
 int MP3_Decode(void *inbuf, unsigned int inlength, void *outbuf, unsigned int outlength, unsigned int *sizeout);
 SceUInt64 MP3_GetPosition(void);
 SceUInt64 MP3_GetLength(void);

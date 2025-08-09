@@ -9,11 +9,11 @@ if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
 endif()
 
 
-project(webradios)
+project(webradio)
 include("${VITASDK}/share/vita.cmake" REQUIRED)
 
 set(VITA_APP_NAME "Webradio POC")
-set(VITA_TITLEID  "WEBRADIOS")
+set(VITA_TITLEID  "WEBRADIO1")
 set(VITA_VERSION  "01.00")
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu11")

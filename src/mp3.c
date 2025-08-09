@@ -181,10 +181,6 @@ int MP3_Init() {
 	// 	}
 	// }
 
-	// mpg123_getformat(mp3, &sample_rate, &channels, NULL);
-	// mpg123_format_none(mp3);
-	// mpg123_format(mp3, sample_rate, channels, MPG123_ENC_SIGNED_16);
-	// total_samples = mpg123_length(mp3);
 	return 0;
 }
 
@@ -196,16 +192,14 @@ SceUInt8 MP3_GetChannels(void) {
 	return channels;
 }
 
-int MP3_FirstDecode(void *inbuf, unsigned int inlength, void *outbuf, unsigned int outlength) {
-	size_t donesize = 0;
-	int ret = mpg123_decode(mp3, inbuf, inlength, outbuf, outlength, &donesize);
-	if (ret == MPG123_NEW_FORMAT) {
-		long rate;
-		int channels, enc;
-		mpg123_getformat(mp3, &rate, &channels, &enc);
-		printf("New format: %li Hz, %i channels, encoding value %i\n", rate, channels, enc);
-		return 0;
+int MP3_Feed(void *inbuf, unsigned int inlength) {
+	int ret = 0;
+
+	ret = mpg123_feed(mp3, inbuf, inlength);
+	if (ret == MPG123_ERR) {
+		printf("MP3_Decode error: %s\n", mpg123_strerror(mp3));
 	}
+
 	return ret;
 }
 
@@ -214,8 +208,16 @@ int MP3_Decode(void *inbuf, unsigned int inlength, void *outbuf, unsigned int ou
 
 	ret = mpg123_decode(mp3, inbuf, inlength, outbuf, outlength, sizeout);
 
-	if (ret == MPG123_ERR) {
-		printf("MP3_Decode error: %s", mpg123_strerror(mp3));
+	if (ret == MPG123_NEW_FORMAT) {
+		long rate;
+		int channels, enc;
+		mpg123_getformat(mp3, &rate, &channels, &enc);
+		printf("New format: %li Hz, %i channels, encoding value %i\n", rate, channels, enc);
+		return 0;
+	} else if (ret == MPG123_ERR) {
+		printf("MP3_Decode error: %s\n", mpg123_strerror(mp3));
+	} else if (ret == MPG123_NEED_MORE) {
+		printf("MP3_Decode needs more data\n");
 	}
 
 	return ret;
