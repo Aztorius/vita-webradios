@@ -246,24 +246,16 @@ int main(void) {
 
 	SceCtrlData ctrl_peek, ctrl_press;
 
-	// play_webradio("https://listen.radioking.com/radio/747505/stream/814189", port);
-	play_webradio("http://novazz.ice.infomaniak.ch/novazz-128.mp3"); // disponible en HTTP et HTTPS
+	do{
+		ctrl_press = ctrl_peek;
+		sceCtrlPeekBufferPositive(0, &ctrl_peek, 1);
+		ctrl_press.buttons = ctrl_peek.buttons & ~ctrl_press.buttons;
 
-	// do{
-	// 	ctrl_press = ctrl_peek;
-	// 	sceCtrlPeekBufferPositive(0, &ctrl_peek, 1);
-	// 	ctrl_press.buttons = ctrl_peek.buttons & ~ctrl_press.buttons;
-
-	// 	// TODO : get data from socket
-
-	// 	ret = MP3_Decode(inbuffer, BUFFER_LENGTH, outbuffer, BUFFER_LENGTH);
-	// 	if (ret) {
-	// 		printf("MP3_Decode %i", ret);
-	// 		break;
-	// 	}
-
-	// 	sceAudioOutOutput(port, outbuffer);
-	// } while(ctrl_press.buttons != SCE_CTRL_START);
+		if (ctrl_press.buttons & SCE_CTRL_CROSS || 1) { // TODO : no autostart
+			// play_webradio("https://listen.radioking.com/radio/747505/stream/814189", port);
+			play_webradio("http://novazz.ice.infomaniak.ch/novazz-128.mp3"); // disponible en HTTP et HTTPS
+		}
+	} while(ctrl_press.buttons != SCE_CTRL_START);
 
 	sceSysmoduleUnloadModule(SCE_SYSMODULE_HTTPS);
 	sceSysmoduleUnloadModuleInternal(SCE_SYSMODULE_INTERNAL_PAF);
