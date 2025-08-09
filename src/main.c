@@ -142,6 +142,7 @@ int play_webradio(char *url) {
 					// int compatible_freqs[] = {8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000};
 					int vol = SCE_AUDIO_VOLUME_0DB;
 					port = sceAudioOutOpenPort(SCE_AUDIO_OUT_PORT_TYPE_BGM, NSAMPLES, MP3_GetSampleRate(), SCE_AUDIO_OUT_MODE_STEREO);
+					psvDebugScreenPrintf("Playing %s sample_rate %i\n", url, MP3_GetSampleRate());
 					sceAudioOutSetConfig(port, -1, -1, -1);
 					sceAudioOutSetVolume(port, SCE_AUDIO_VOLUME_FLAG_L_CH |SCE_AUDIO_VOLUME_FLAG_R_CH, (int[]){vol,vol});
 				} else if (ret == -10) {
