@@ -24,7 +24,7 @@
 #define BUFFER_LENGTH 8192
 #define NSAMPLES 2048
 
-int open_webradio(char *url, int port) {
+int play_webradio(char *url) {
 
 	int res, tpl, conn, req;
 	SceUInt64 length = 0;
@@ -98,9 +98,18 @@ int open_webradio(char *url, int port) {
 	res = sceHttpGetResponseContentLength(req, &length);
 	sceClibPrintf("sceHttpGetResponseContentLength=%i\n", res);
 
+	int port = -1;
+
+	int ret = MP3_Init();
+	if (ret) {
+		printf("MP3_Init %i\n", ret);
+		sceAudioOutReleasePort(port);
+		return 0;
+	}
+
 	if(res < 0){
 		recv_buffer = sce_paf_memalign(0x40, 0x10000);
-		if(recv_buffer == NULL){
+		if (recv_buffer == NULL) {
 			sceClibPrintf("sce_paf_memalign return to NULL\n");
 			goto http_abort_req;
 		}
@@ -114,7 +123,7 @@ int open_webradio(char *url, int port) {
 				break;
 			}
 			sceClibPrintf("sceHttpReadData: %i\n", res);
-			int ret = 0;
+
 			ret = MP3_Feed(recv_buffer, res);
 			if (ret) {
 				printf("MP3_Feed error: %i\n", ret);
@@ -122,8 +131,22 @@ int open_webradio(char *url, int port) {
 			}
 
 			while (!ret) {
+				// Decode and play until we run out of data
 				ret = MP3_Decode(NULL, 0, outbuffer, BUFFER_LENGTH, &outsize);
-				if (ret) {
+				if (ret == -11) {
+					// New format, close old output if necessary
+					if (port >= 0) {
+						sceAudioOutReleasePort(port);
+					}
+
+					// int compatible_freqs[] = {8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000};
+					int vol = SCE_AUDIO_VOLUME_0DB;
+					port = sceAudioOutOpenPort(SCE_AUDIO_OUT_PORT_TYPE_BGM, NSAMPLES, MP3_GetSampleRate(), SCE_AUDIO_OUT_MODE_STEREO);
+					sceAudioOutSetConfig(port, -1, -1, -1);
+					sceAudioOutSetVolume(port, SCE_AUDIO_VOLUME_FLAG_L_CH |SCE_AUDIO_VOLUME_FLAG_R_CH, (int[]){vol,vol});
+				} else if (ret == -10) {
+					printf("MP3_Decode needs more data\n");
+				} else if (ret) {
 					printf("MP3_Decode error: %i\n", ret);
 					break;
 				}
@@ -181,6 +204,11 @@ free_memblk:
 	sce_paf_free(recv_buffer);
 	recv_buffer = NULL;
 
+	if (port >= 0) {
+		MP3_Term();
+		sceAudioOutReleasePort(port);
+	}
+
 	return 0;
 }
 
@@ -205,31 +233,10 @@ int main(void) {
 	sceSysmoduleLoadModuleInternalWithArg(SCE_SYSMODULE_INTERNAL_PAF, sizeof(paf_init_param), &paf_init_param, &sysmodule_opt);
 	sceSysmoduleLoadModule(SCE_SYSMODULE_HTTPS);
 
-	int freqs[] = {8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000};
-	int size = NSAMPLES;
-	int freq = 7;
-	int mode = SCE_AUDIO_OUT_MODE_STEREO; // SCE_AUDIO_OUT_MODE_MONO;
-	int vol = SCE_AUDIO_VOLUME_0DB;
-
-	int port = sceAudioOutOpenPort(SCE_AUDIO_OUT_PORT_TYPE_BGM, size, freqs[freq], mode);
-	sceAudioOutSetConfig(port, -1, -1, -1);
-	sceAudioOutSetVolume(port, SCE_AUDIO_VOLUME_FLAG_L_CH |SCE_AUDIO_VOLUME_FLAG_R_CH, (int[]){vol,vol});
-
-	int ret = MP3_Init();
-	if (ret) {
-		printf("MP3_Init %i\n", ret);
-		sceAudioOutReleasePort(port);
-		return 0;
-	}
-
-	// printf("samplerate %u\n", MP3_GetSampleRate());
-	// printf("channels %u\n", MP3_GetChannels());
-
-	// unsigned char inbuffer[BUFFER_LENGTH] = {0};
 	SceCtrlData ctrl_peek, ctrl_press;
 
-	// open_webradio("https://listen.radioking.com/radio/747505/stream/814189", port);
-	open_webradio("http://stream-eurodance90.fr/radio/8000/128.mp3", port); // disponible en HTTP et HTTPS
+	// play_webradio("https://listen.radioking.com/radio/747505/stream/814189", port);
+	play_webradio("http://novazz.ice.infomaniak.ch/novazz-128.mp3"); // disponible en HTTP et HTTPS
 
 	// do{
 	// 	ctrl_press = ctrl_peek;
@@ -246,9 +253,6 @@ int main(void) {
 
 	// 	sceAudioOutOutput(port, outbuffer);
 	// } while(ctrl_press.buttons != SCE_CTRL_START);
-
-	MP3_Term();
-	sceAudioOutReleasePort(port);
 
 	sceSysmoduleUnloadModule(SCE_SYSMODULE_HTTPS);
 	sceSysmoduleUnloadModuleInternal(SCE_SYSMODULE_INTERNAL_PAF);

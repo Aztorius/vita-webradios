@@ -209,11 +209,8 @@ int MP3_Decode(void *inbuf, unsigned int inlength, void *outbuf, unsigned int ou
 	ret = mpg123_decode(mp3, inbuf, inlength, outbuf, outlength, sizeout);
 
 	if (ret == MPG123_NEW_FORMAT) {
-		long rate;
-		int channels, enc;
-		mpg123_getformat(mp3, &rate, &channels, &enc);
-		printf("New format: %li Hz, %i channels, encoding value %i\n", rate, channels, enc);
-		return 0;
+		int enc;
+		mpg123_getformat(mp3, &sample_rate, &channels, &enc);
 	} else if (ret == MPG123_ERR) {
 		printf("MP3_Decode error: %s\n", mpg123_strerror(mp3));
 	} else if (ret == MPG123_NEED_MORE) {
