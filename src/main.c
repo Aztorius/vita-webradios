@@ -193,6 +193,15 @@ int audio_thread() {
 	while (player.state != PLAYER_STATE_STOPPING) {
 		sceKernelLockMutex(audio_mutex, 1, &timeout);
 
+		if (player.state == PLAYER_STATE_WAITING) {
+			do {
+				// Consume everything
+				ret = MP3_Decode(NULL, 0, outbuffer, BUFFER_LENGTH, &outsize);
+			} while (!ret);
+			sceKernelDelayThread(100000); // Delay for 100 ms
+			continue;
+		}
+
 		ret = MP3_Decode(NULL, 0, outbuffer, BUFFER_LENGTH, &outsize);
 		if (ret == -11) {
 			// New format, close old output if necessary
