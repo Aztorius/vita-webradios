@@ -32,11 +32,13 @@ enum player_state {
 
 struct player {
 	enum player_state state;
-	int thread_id;
+	int http_thread_id;
+	int player_thread_id;
 	char *url;
 };
 
 static struct player player;
+static int audio_mutex;
 
 int play_webradio(char *url) {
 
@@ -112,73 +114,31 @@ int play_webradio(char *url) {
 	res = sceHttpGetResponseContentLength(req, &length);
 	sceClibPrintf("sceHttpGetResponseContentLength=%i\n", res);
 
-	int port = -1;
-
-	int ret = MP3_Init();
-	if (ret) {
-		printf("MP3_Init %i\n", ret);
-		sceAudioOutReleasePort(port);
-		return 0;
-	}
-
-	if(res < 0){
+	if (res < 0){
 		recv_buffer = sce_paf_memalign(0x40, 0x10000);
 		if (recv_buffer == NULL) {
 			sceClibPrintf("sce_paf_memalign return to NULL\n");
 			goto http_abort_req;
 		}
 
-		unsigned char outbuffer[BUFFER_LENGTH] = {0};
-		int outsize = 0;
+		int ret = 0;
+		unsigned int timeout = 10000000;
 
-		do {
+		while (player.state == PLAYER_STATE_PLAYING) {
 			res = sceHttpReadData(req, recv_buffer, 0x10000);
 			if (res <= 0) {
 				break;
 			}
 			sceClibPrintf("sceHttpReadData: %i\n", res);
 
+			sceKernelLockMutex(audio_mutex, 1, &timeout);
 			ret = MP3_Feed(recv_buffer, res);
+			sceKernelUnlockMutex(audio_mutex, 1);
 			if (ret) {
 				printf("MP3_Feed error: %i\n", ret);
 				break;
 			}
-
-			while (!ret && player.state == PLAYER_STATE_PLAYING) {
-				// Decode and play until we run out of data
-				ret = MP3_Decode(NULL, 0, outbuffer, BUFFER_LENGTH, &outsize);
-				if (ret == -11) {
-					// New format, close old output if necessary
-					if (port >= 0) {
-						sceAudioOutReleasePort(port);
-					}
-
-					// int compatible_freqs[] = {8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000};
-					int vol = SCE_AUDIO_VOLUME_0DB;
-					int channels = MP3_GetChannels();
-					int channels_mode = 0;
-					if (channels == 1) {
-						channels_mode = SCE_AUDIO_OUT_MODE_MONO;
-					} else if (channels == 2) {
-						channels_mode = SCE_AUDIO_OUT_MODE_STEREO;
-					} else {
-						printf("Wrong number of channel in stream !");
-						goto http_abort_req;
-					}
-					port = sceAudioOutOpenPort(SCE_AUDIO_OUT_PORT_TYPE_BGM, NSAMPLES, MP3_GetSampleRate(), channels_mode);
-					psvDebugScreenPrintf("Playing %s sample_rate %i channels %i\n", url, MP3_GetSampleRate(), MP3_GetChannels());
-					sceAudioOutSetConfig(port, -1, -1, -1);
-					sceAudioOutSetVolume(port, SCE_AUDIO_VOLUME_FLAG_L_CH |SCE_AUDIO_VOLUME_FLAG_R_CH, (int[]){vol,vol});
-				} else if (ret == -10) {
-					printf("MP3_Decode needs more data\n");
-				} else if (ret) {
-					printf("MP3_Decode error: %i\n", ret);
-					break;
-				}
-
-				sceAudioOutOutput(port, outbuffer);
-			}
-		} while(player.state == PLAYER_STATE_PLAYING);
+		}
 	} else {
 		sceClibPrintf("length=0x%llX\n", length);
 		printf("This is a fixed size request ?! Aborting");
@@ -218,12 +178,61 @@ free_memblk:
 	sce_paf_free(recv_buffer);
 	recv_buffer = NULL;
 
+	return 0;
+}
+
+int audio_thread() {
+	int port = -1;
+
+	int ret = 0;
+
+	unsigned char outbuffer[BUFFER_LENGTH] = {0};
+	int outsize = 0;
+	unsigned int timeout = 10000000;
+
+	while (player.state != PLAYER_STATE_STOPPING) {
+		sceKernelLockMutex(audio_mutex, 1, &timeout);
+
+		ret = MP3_Decode(NULL, 0, outbuffer, BUFFER_LENGTH, &outsize);
+		if (ret == -11) {
+			// New format, close old output if necessary
+			if (port >= 0) {
+				sceAudioOutReleasePort(port);
+			}
+	
+			// int compatible_freqs[] = {8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000};
+			int vol = SCE_AUDIO_VOLUME_0DB;
+			int channels = MP3_GetChannels();
+			int channels_mode = 0;
+			if (channels == 1) {
+				channels_mode = SCE_AUDIO_OUT_MODE_MONO;
+			} else if (channels == 2) {
+				channels_mode = SCE_AUDIO_OUT_MODE_STEREO;
+			} else {
+				printf("Wrong number of channel in stream !");
+				goto audio_thread_end;
+			}
+	
+			port = sceAudioOutOpenPort(SCE_AUDIO_OUT_PORT_TYPE_BGM, NSAMPLES, MP3_GetSampleRate(), channels_mode);
+			psvDebugScreenPrintf("Playing %s sample_rate %i channels %i\n", player.url, MP3_GetSampleRate(), channels);
+			sceAudioOutSetConfig(port, -1, -1, -1);
+			sceAudioOutSetVolume(port, SCE_AUDIO_VOLUME_FLAG_L_CH |SCE_AUDIO_VOLUME_FLAG_R_CH, (int[]){vol,vol});
+		}
+
+		sceKernelUnlockMutex(audio_mutex, 1);
+	
+		if (outsize > 0)
+			sceAudioOutOutput(port, outbuffer);
+		else
+			sceKernelDelayThread(100000); // Delay for 100 ms
+	}
+
+audio_thread_end:
 	if (port >= 0) {
-		MP3_Term();
 		sceAudioOutReleasePort(port);
 	}
 
-	return 0;
+	MP3_Term();
 }
 
 int http_thread() {
@@ -234,7 +243,6 @@ int http_thread() {
 			playing = 1;
 			play_webradio(player.url);
 			playing = 0;
-			player.state = PLAYER_STATE_WAITING;
 		}
 
 		sceKernelDelayThread(200000); // Delay for 200 ms
@@ -264,6 +272,18 @@ int main(void) {
 	sceSysmoduleLoadModuleInternalWithArg(SCE_SYSMODULE_INTERNAL_PAF, sizeof(paf_init_param), &paf_init_param, &sysmodule_opt);
 	sceSysmoduleLoadModule(SCE_SYSMODULE_HTTPS);
 
+	audio_mutex = sceKernelCreateMutex("audioMutex", 0, 1, NULL);
+	if (audio_mutex < 0) {
+		printf("Error creating mutex\n");
+		return 1;
+	}
+
+	int ret = MP3_Init();
+	if (ret) {
+		printf("MP3_Init %i\n", ret);
+		return 1;
+	}
+
 	SceCtrlData ctrl_peek, ctrl_press;
 
 	int thid = 0;
@@ -273,11 +293,20 @@ int main(void) {
 		return 1;
 	}
 
-	player.thread_id = thid;
-	player.state = PLAYER_STATE_WAITING;
-	sceKernelStartThread(thid, 0, 0);
+	player.http_thread_id = thid;
 
-	do{
+	thid = sceKernelCreateThread("audioThread", audio_thread, 0x10000100, 0x10000, 0, 0, NULL);
+	if (thid < 0) {
+		sceClibPrintf("Error creating thread with id %i\n", thid);
+		return 1;
+	}
+
+	player.player_thread_id = thid;
+	player.state = PLAYER_STATE_WAITING;
+	sceKernelStartThread(player.player_thread_id, 0, 0);
+	sceKernelStartThread(player.http_thread_id, 0, 0);
+
+	do {
 		ctrl_press = ctrl_peek;
 		sceCtrlPeekBufferPositive(0, &ctrl_peek, 1);
 		ctrl_press.buttons = ctrl_peek.buttons & ~ctrl_press.buttons;
@@ -292,18 +321,30 @@ int main(void) {
 		} else if (ctrl_press.buttons & SCE_CTRL_CIRCLE) {
 			player.state = PLAYER_STATE_WAITING;
 		}
-	} while(ctrl_press.buttons != SCE_CTRL_START);
+
+		sceKernelDelayThread(100000); // Delay for 100 ms
+	} while (ctrl_press.buttons != SCE_CTRL_START);
 
 	player.state = PLAYER_STATE_STOPPING;
 
 	int exitstatus = 0, timeout = 2000000;
-	int ret = sceKernelWaitThreadEnd(player.thread_id, &exitstatus, &timeout);
+
+	ret = sceKernelWaitThreadEnd(player.player_thread_id, &exitstatus, &timeout);
+	if (ret < 0 || exitstatus != 0)
+    {
+        sceClibPrintf("Error on thread exit. Exit status %i, return code %i\n", exitstatus, ret);
+    }
+
+	ret = sceKernelWaitThreadEnd(player.http_thread_id, &exitstatus, &timeout);
     if (ret < 0 || exitstatus != 0)
     {
         sceClibPrintf("Error on thread exit. Exit status %i, return code %i\n", exitstatus, ret);
     }
 
-    sceKernelDeleteThread(player.thread_id);
+	sceKernelDeleteThread(player.player_thread_id);
+    sceKernelDeleteThread(player.http_thread_id);
+
+	sceKernelDeleteMutex(audio_mutex);
 
 	sceSysmoduleUnloadModule(SCE_SYSMODULE_HTTPS);
 	sceSysmoduleUnloadModuleInternal(SCE_SYSMODULE_INTERNAL_PAF);
