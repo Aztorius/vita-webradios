@@ -198,6 +198,7 @@ int audio_thread() {
 				// Consume everything
 				ret = MP3_Decode(NULL, 0, outbuffer, BUFFER_LENGTH, &outsize);
 			} while (!ret);
+			sceKernelUnlockMutex(audio_mutex, 1);
 			sceKernelDelayThread(100000); // Delay for 100 ms
 			continue;
 		}
