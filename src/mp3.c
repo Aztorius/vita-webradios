@@ -141,10 +141,6 @@ int MP3_Init() {
 	if (error != MPG123_OK)
 		return error;
 
-	// error = mpg123_open(mp3, path);
-	// if (error != MPG123_OK)
-	// 	return error;
-
 	error = mpg123_open_feed(mp3);
 	if (error != MPG123_OK)
 		return error;
