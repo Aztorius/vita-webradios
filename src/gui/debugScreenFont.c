@@ -11,6 +11,7 @@
  *
  * $Id: font.c 540 2005-07-08 19:35:10Z warren $
  */
+#include "debugScreen.h"
 
 PsvDebugScreenFont psvDebugScreenFont = { glyphs:(unsigned char*)
 "\x00\x00\x00\x00\x00\x00\x00\x00\x3c\x42\xa5\x81\xa5\x99\x42\x3c"
