@@ -16,7 +16,7 @@
 #include <psp2/sysmodule.h>
 
 #include "gui/debugScreen.h"
-#include "mp3.h"
+#include "audio/mp3.h"
 
 // #define printf psvDebugScreenPrintf
 #define printf sceClibPrintf
