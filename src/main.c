@@ -122,7 +122,6 @@ int play_webradio(char *url) {
 		}
 
 		int ret = 0;
-		unsigned int timeout = 10000000;
 
 		while (player.state == PLAYER_STATE_PLAYING) {
 			res = sceHttpReadData(req, recv_buffer, 0x10000);
@@ -131,9 +130,13 @@ int play_webradio(char *url) {
 			}
 			sceClibPrintf("sceHttpReadData: %i\n", res);
 
-			sceKernelLockMutex(audio_mutex, 1, &timeout);
-			ret = MP3_Feed(recv_buffer, res);
-			sceKernelUnlockMutex(audio_mutex, 1);
+			if (sceKernelLockMutex(audio_mutex, 1, NULL) < 0) {
+				ret = 0;
+				printf("Cannot lock mutex in http thread, skipping audio\n");
+			} else {
+				ret = MP3_Feed(recv_buffer, res);
+				sceKernelUnlockMutex(audio_mutex, 1);
+			}
 			if (ret) {
 				printf("MP3_Feed error: %i\n", ret);
 				break;
@@ -188,10 +191,13 @@ int audio_thread() {
 
 	unsigned char outbuffer[BUFFER_LENGTH] = {0};
 	int outsize = 0;
-	unsigned int timeout = 10000000;
 
 	while (player.state != PLAYER_STATE_STOPPING) {
-		sceKernelLockMutex(audio_mutex, 1, &timeout);
+		if (sceKernelLockMutex(audio_mutex, 1, NULL) < 0) {
+			sceKernelDelayThread(100000); // Delay for 100 ms
+			printf("audio_thread: error locking mutex\n");
+			continue;
+		}
 
 		if (player.state == PLAYER_STATE_WAITING) {
 			do {
@@ -282,7 +288,7 @@ int main(void) {
 	sceSysmoduleLoadModuleInternalWithArg(SCE_SYSMODULE_INTERNAL_PAF, sizeof(paf_init_param), &paf_init_param, &sysmodule_opt);
 	sceSysmoduleLoadModule(SCE_SYSMODULE_HTTPS);
 
-	audio_mutex = sceKernelCreateMutex("audioMutex", 0, 1, NULL);
+	audio_mutex = sceKernelCreateMutex("audioMutex", 0, 0, NULL);
 	if (audio_mutex < 0) {
 		printf("Error creating mutex\n");
 		return 1;
@@ -342,13 +348,13 @@ int main(void) {
 	ret = sceKernelWaitThreadEnd(player.player_thread_id, &exitstatus, &timeout);
 	if (ret < 0 || exitstatus != 0)
     {
-        sceClibPrintf("Error on thread exit. Exit status %i, return code %i\n", exitstatus, ret);
+        sceClibPrintf("Error on player_thread exit. Exit status %i, return code %i\n", exitstatus, ret);
     }
 
 	ret = sceKernelWaitThreadEnd(player.http_thread_id, &exitstatus, &timeout);
     if (ret < 0 || exitstatus != 0)
     {
-        sceClibPrintf("Error on thread exit. Exit status %i, return code %i\n", exitstatus, ret);
+        sceClibPrintf("Error on http_thread exit. Exit status %i, return code %i\n", exitstatus, ret);
     }
 
 	sceKernelDeleteThread(player.player_thread_id);
