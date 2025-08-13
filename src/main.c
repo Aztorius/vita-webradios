@@ -17,6 +17,7 @@
 
 #include "gui/debugScreen.h"
 #include "audio/mp3.h"
+#include "m3u_parser/m3u.h"
 
 // #define printf psvDebugScreenPrintf
 #define printf sceClibPrintf
@@ -270,6 +271,13 @@ int http_thread() {
 int main(void) {
 	psvDebugScreenInit();
 
+	struct m3u_file *m3ufile = NULL;
+	m3u_parse("playlist.m3u", &m3ufile);
+	if (!m3ufile) {
+		printf("Error reading file\n");
+		return 1;
+	}
+
 	int res;
 	SceUInt32 paf_init_param[6];
 	SceSysmoduleOpt sysmodule_opt;
@@ -322,6 +330,12 @@ int main(void) {
 	sceKernelStartThread(player.player_thread_id, 0, 0);
 	sceKernelStartThread(player.http_thread_id, 0, 0);
 
+	struct m3u_entry *current_entry = m3ufile->first_entry;
+	if (!current_entry) {
+		printf("File has no URL\n");
+		return 1;
+	}
+
 	do {
 		ctrl_press = ctrl_peek;
 		sceCtrlPeekBufferPositive(0, &ctrl_peek, 1);
@@ -329,13 +343,19 @@ int main(void) {
 
 		if (ctrl_press.buttons & SCE_CTRL_CROSS) {
 			if (player.state == PLAYER_STATE_PLAYING) {
-				// We are already playing something
-				continue;
+				// Stopping
+				player.state = PLAYER_STATE_WAITING;
+			} else {
+				printf("Trying to play %s\n", current_entry->url);
+				player.url = current_entry->url;
+				player.state = PLAYER_STATE_PLAYING;
 			}
-			player.url = "http://novazz.ice.infomaniak.ch/novazz-128.mp3";
-			player.state = PLAYER_STATE_PLAYING;
 		} else if (ctrl_press.buttons & SCE_CTRL_CIRCLE) {
-			player.state = PLAYER_STATE_WAITING;
+			if (current_entry->next) {
+				current_entry = current_entry->next;
+				player.url = current_entry->url;
+				player.state = PLAYER_STATE_PLAYING;
+			}
 		}
 
 		sceKernelDelayThread(100000); // Delay for 100 ms
@@ -364,6 +384,8 @@ int main(void) {
 
 	sceSysmoduleUnloadModule(SCE_SYSMODULE_HTTPS);
 	sceSysmoduleUnloadModuleInternal(SCE_SYSMODULE_INTERNAL_PAF);
+
+	m3u_file_free(m3ufile);
 
 	return 0;
 }

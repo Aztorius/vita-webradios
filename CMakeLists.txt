@@ -23,6 +23,7 @@ add_executable(${PROJECT_NAME}
   src/main.c
   src/gui/debugScreen.c
   src/audio/mp3.c
+  src/m3u_parser/m3u.c
 )
 
 target_link_libraries(${PROJECT_NAME}
