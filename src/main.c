@@ -345,16 +345,16 @@ int main(void) {
 
 	int exitstatus = 0, timeout = 2000000;
 
-	ret = sceKernelWaitThreadEnd(player.player_thread_id, &exitstatus, &timeout);
-	if (ret < 0 || exitstatus != 0)
-    {
-        sceClibPrintf("Error on player_thread exit. Exit status %i, return code %i\n", exitstatus, ret);
-    }
-
 	ret = sceKernelWaitThreadEnd(player.http_thread_id, &exitstatus, &timeout);
     if (ret < 0 || exitstatus != 0)
     {
         sceClibPrintf("Error on http_thread exit. Exit status %i, return code %i\n", exitstatus, ret);
+    }
+
+	ret = sceKernelWaitThreadEnd(player.player_thread_id, &exitstatus, &timeout);
+	if (ret < 0 || exitstatus != 0)
+    {
+        sceClibPrintf("Error on player_thread exit. Exit status %i, return code %i\n", exitstatus, ret);
     }
 
 	sceKernelDeleteThread(player.player_thread_id);
