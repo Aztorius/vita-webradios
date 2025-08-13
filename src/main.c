@@ -36,6 +36,7 @@ struct player {
 	int http_thread_id;
 	int player_thread_id;
 	char *url;
+	char *title;
 };
 
 static struct player player;
@@ -124,12 +125,11 @@ int play_webradio(char *url) {
 
 		int ret = 0;
 
-		while (player.state == PLAYER_STATE_PLAYING) {
+		while (player.state == PLAYER_STATE_PLAYING && player.url == url) {
 			res = sceHttpReadData(req, recv_buffer, 0x10000);
 			if (res <= 0) {
 				break;
 			}
-			sceClibPrintf("sceHttpReadData: %i\n", res);
 
 			if (sceKernelLockMutex(audio_mutex, 1, NULL) < 0) {
 				ret = 0;
@@ -231,7 +231,7 @@ int audio_thread() {
 			}
 	
 			port = sceAudioOutOpenPort(SCE_AUDIO_OUT_PORT_TYPE_BGM, NSAMPLES, MP3_GetSampleRate(), channels_mode);
-			psvDebugScreenPrintf("Playing %s sample_rate %i channels %i\n", player.url, MP3_GetSampleRate(), channels);
+			psvDebugScreenPrintf("Playing %s %s sample_rate %i channels %i\n", player.title, player.url, MP3_GetSampleRate(), channels);
 			sceAudioOutSetConfig(port, -1, -1, -1);
 			sceAudioOutSetVolume(port, SCE_AUDIO_VOLUME_FLAG_L_CH |SCE_AUDIO_VOLUME_FLAG_R_CH, (int[]){vol,vol});
 		}
@@ -336,6 +336,10 @@ int main(void) {
 		return 1;
 	}
 
+	player.url = current_entry->url;
+	player.title = current_entry->title;
+	player.state = PLAYER_STATE_PLAYING;
+ 
 	do {
 		ctrl_press = ctrl_peek;
 		sceCtrlPeekBufferPositive(0, &ctrl_peek, 1);
@@ -346,14 +350,17 @@ int main(void) {
 				// Stopping
 				player.state = PLAYER_STATE_WAITING;
 			} else {
-				printf("Trying to play %s\n", current_entry->url);
+				psvDebugScreenPrintf("Playing %s %s\n", current_entry->title, current_entry->url);
 				player.url = current_entry->url;
+				player.title = current_entry->title;
 				player.state = PLAYER_STATE_PLAYING;
 			}
 		} else if (ctrl_press.buttons & SCE_CTRL_CIRCLE) {
 			if (current_entry->next) {
 				current_entry = current_entry->next;
+				psvDebugScreenPrintf("Playing %s %s\n", current_entry->title, current_entry->url);
 				player.url = current_entry->url;
+				player.title = current_entry->title;
 				player.state = PLAYER_STATE_PLAYING;
 			}
 		}

@@ -51,10 +51,10 @@ int m3u_parse(char *filepath, struct m3u_file **m3ufile_p)
     }
 
     char buffer[1024];
+    char *title = NULL;
     while (fgets(buffer, 1024, fp)) {
         remove_trailing_crlf(buffer);
         int length = strlen(buffer);
-        printf("length %i\n", length);
         if (str_starts_with(buffer, "#")) {
             // We have a special metadata
             if (str_starts_with(buffer, "#PLAYLIST:")) {
@@ -65,6 +65,15 @@ int m3u_parse(char *filepath, struct m3u_file **m3ufile_p)
                         return -1;
                     }
                     strcpy(m3ufile->playlist_name, buffer + 8);
+                }
+            } else if (str_starts_with(buffer, "#EXTINF:")) {
+                int length_until_title = strcspn(buffer, ",") + 1;
+                if (length_until_title > 1 && length_until_title < length) {
+                    if (title)
+                        free(title);
+
+                    title = malloc(length - length_until_title);
+                    strncpy(title, buffer + length_until_title, length - length_until_title);
                 }
             }
         } else {
@@ -85,6 +94,11 @@ int m3u_parse(char *filepath, struct m3u_file **m3ufile_p)
             strncpy(entry->url, buffer, length);
             entry->logo_url = NULL;
             entry->title = NULL;
+
+            if (title) {
+                entry->title = title;
+                title = NULL;
+            }
 
             if (!m3ufile->first_entry) {
                 m3ufile->first_entry = entry;
