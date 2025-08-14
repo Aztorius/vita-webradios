@@ -205,6 +205,7 @@ int audio_thread() {
 
 	unsigned char outbuffer[BUFFER_LENGTH] = {0};
 	int outsize = 0;
+	char *current_url = NULL;
 
 	while (player.state != PLAYER_STATE_STOPPING) {
 		if (sceKernelLockMutex(audio_mutex, 1, NULL) < 0) {
@@ -213,7 +214,8 @@ int audio_thread() {
 			continue;
 		}
 
-		if (player.state == PLAYER_STATE_WAITING) {
+		if (player.state == PLAYER_STATE_WAITING || player.url != current_url) {
+			current_url = player.url;
 			do {
 				// Consume everything
 				ret = MP3_Decode(NULL, 0, outbuffer, BUFFER_LENGTH, &outsize);
