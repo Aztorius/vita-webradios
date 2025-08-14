@@ -31,7 +31,7 @@ int m3u_parse(char *filepath, struct m3u_file **m3ufile_p)
     *m3ufile_p = malloc(sizeof(struct m3u_file));
     struct m3u_file *m3ufile = *m3ufile_p;
     if (!m3ufile) {
-        printf("Could not allocate memory for m3u_file");
+        printf("Could not allocate memory for m3u_file\n");
         return -1;
     }
 
@@ -46,7 +46,7 @@ int m3u_parse(char *filepath, struct m3u_file **m3ufile_p)
     // Read the m3u file and allocate entries
     fp = fopen(filepath, "r");
     if (!fp) {
-        printf("Could not open file %s", filepath);
+        printf("Could not open file %s\n", filepath);
         return -1;
     }
 

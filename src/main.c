@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <stdint.h>
 #include <string.h>
 #include <math.h>
@@ -8,6 +9,7 @@
 #include <psp2/kernel/clib.h>
 #include <psp2/kernel/processmgr.h>
 #include <psp2/kernel/sysmem.h>
+#include <psp2/io/stat.h>
 #include <psp2/libssl.h>
 #include <psp2/net/http.h>
 #include <psp2/net/net.h>
@@ -24,6 +26,17 @@
 
 #define BUFFER_LENGTH 8192
 #define NSAMPLES 2048
+
+char *default_playlist = "#EXTM3U\n"
+"#PLAYLIST:Default playlist\n"
+"#EXTINF:-1,WFMU's Rosck'n'Soul Radio\n"
+"http://stream0.wfmu.org/rocknsoul-live.mp3\n"
+"#EXTINF:-1,Linn Jazz\n"
+"http://radio.linn.co.uk:8000/autodj\n"
+"#EXTINF:-1,CAMP\n"
+"http://listen.camp:8000/campradio.mp3\n"
+"#EXTINF:-1,Nightwave Plaza\n"
+"http://radio.plaza.one/mp3";
 
 enum player_state {
 	PLAYER_STATE_WAITING,
@@ -271,11 +284,35 @@ int http_thread() {
 int main(void) {
 	psvDebugScreenInit();
 
+	char *path = "uma0:/data/webradio/playlist.m3u";
 	struct m3u_file *m3ufile = NULL;
-	m3u_parse("playlist.m3u", &m3ufile);
-	if (!m3ufile) {
-		printf("Error reading file\n");
-		return 1;
+	if (m3u_parse(path, &m3ufile)) {
+		m3u_file_free(m3ufile);
+		path = "ux0:/data/webradio/playlist.m3u";
+		if (m3u_parse(path, &m3ufile)) {
+			m3u_file_free(m3ufile);
+			// Playlist missing, creating default playlist
+			if (sceIoMkdir("uma0:/data", 0777)) {
+				// Using ux0
+				sceIoMkdir("ux0:/data", 0777);
+				sceIoMkdir("ux0:/data/webradio", 0777);
+				path = "ux0:/data/webradio/playlist.m3u";
+			} else {
+				// Using uma0
+				sceIoMkdir("uma0:/data/webradio", 0777);
+				path = "uma0:/data/webradio/playlist.m3u";
+			}
+
+			// Copying playlist to correct location
+			FILE *fout = fopen(path, "w");
+			if (!fout) {
+				printf("Cannot create file at location %s\n", path);
+				return -1;
+			}
+			fwrite(default_playlist, 1, strlen(default_playlist), fout);
+			fclose(fout);
+			m3u_parse(path, &m3ufile);
+		}
 	}
 
 	int res;
