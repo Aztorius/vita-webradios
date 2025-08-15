@@ -61,14 +61,11 @@ int play_webradio(const char *url)
 	net_init_param.size = 0x100000;
 	net_init_param.flags = 0;
 
-	printf("sceKernelAllocMemBlock...\n");
-
 	SceUID memid = sceKernelAllocMemBlock("SceNetMemory", 0x0C20D060, net_init_param.size, NULL);
 	if(memid < 0){
 		sceClibPrintf("sceKernelAllocMemBlock failed (0x%X)\n", memid);
 		return memid;
 	}
-	printf("sceKernelAllocMemBlock allocated\n");
 
 	sceKernelGetMemBlockBase(memid, &net_init_param.memory);
 
@@ -359,8 +356,6 @@ int main(void)
 		}
 	}
 
-	printf("Step 1 done\n");
-
 	int res;
 	SceUInt32 paf_init_param[6];
 	SceSysmoduleOpt sysmodule_opt;
@@ -377,10 +372,7 @@ int main(void)
 	sysmodule_opt.result = &res;
 
 	sceSysmoduleLoadModuleInternalWithArg(SCE_SYSMODULE_INTERNAL_PAF, sizeof(paf_init_param), &paf_init_param, &sysmodule_opt);
-	printf("Step 2 done\n");
 	sceSysmoduleLoadModule(SCE_SYSMODULE_HTTPS);
-
-	printf("Step 2 bis done\n");
 
 	audio_mutex = sceKernelCreateMutex("audioMutex", 0, 0, NULL);
 	if (audio_mutex < 0) {
@@ -388,15 +380,11 @@ int main(void)
 		return 1;
 	}
 
-	printf("Step 3 done\n");
-
 	int ret = MP3_Init();
 	if (ret) {
 		printf("MP3_Init %i\n", ret);
 		return 1;
 	}
-
-	printf("Step 4 done\n");
 
 	SceCtrlData ctrl_peek, ctrl_press;
 
@@ -429,8 +417,6 @@ int main(void)
 	player.url = current_entry->url;
 	player.title = current_entry->title;
 	player.state = PLAYER_STATE_PLAYING;
-
-	printf("Step 5 done\n");
  
 	// Main loop
 	bool done = false;
