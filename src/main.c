@@ -27,17 +27,6 @@
 #define BUFFER_LENGTH 8192
 #define NSAMPLES 2048
 
-char *default_playlist = "#EXTM3U\n"
-"#PLAYLIST:Default playlist\n"
-"#EXTINF:-1,WFMU's Rosck'n'Soul Radio\n"
-"http://stream0.wfmu.org/rocknsoul-live.mp3\n"
-"#EXTINF:-1,Linn Jazz\n"
-"http://radio.linn.co.uk:8000/autodj\n"
-"#EXTINF:-1,CAMP\n"
-"http://listen.camp:8000/campradio.mp3\n"
-"#EXTINF:-1,Nightwave Plaza\n"
-"http://radio.plaza.one/mp3";
-
 enum player_state {
 	PLAYER_STATE_WAITING,
 	PLAYER_STATE_PLAYING,
@@ -283,6 +272,34 @@ int http_thread() {
 	return 0;
 }
 
+int copyfile(const char *destfile, const char *srcfile)
+{
+	FILE *fout = fopen(destfile, "wb");
+	if (!fout) {
+		printf("Cannot create file %s\n", destfile);
+		return -1;
+	}
+
+	FILE *fin = fopen(srcfile, "rb");
+	if (!fin) {
+		printf("Cannot open file %s\n", srcfile);
+		return -1;
+	}
+
+	char buf[512];
+	int nread = 0;
+
+	do {
+		nread = fread(buf, 1, 512, fin);
+		if (nread > 0) {
+			fwrite(buf, 1, nread, fout);
+		}
+	} while (nread > 0);
+
+	fclose(fin);
+	fclose(fout);
+}
+
 int main(void) {
 	psvDebugScreenInit();
 
@@ -306,13 +323,7 @@ int main(void) {
 			}
 
 			// Copying playlist to correct location
-			FILE *fout = fopen(path, "w");
-			if (!fout) {
-				printf("Cannot create file at location %s\n", path);
-				return -1;
-			}
-			fwrite(default_playlist, 1, strlen(default_playlist), fout);
-			fclose(fout);
+			copyfile(path, "default_playlist.m3u");
 			m3u_parse(path, &m3ufile);
 		}
 	}

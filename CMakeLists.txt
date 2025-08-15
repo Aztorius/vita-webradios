@@ -12,8 +12,8 @@ endif()
 project(webradio)
 include("${VITASDK}/share/vita.cmake" REQUIRED)
 
-set(VITA_APP_NAME "Webradio POC")
-set(VITA_TITLEID  "WEBRADIO1")
+set(VITA_APP_NAME "Webradio")
+set(VITA_TITLEID  "WEBRADIOS")
 set(VITA_VERSION  "01.00")
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu11")
@@ -46,4 +46,5 @@ vita_create_self(${PROJECT_NAME}.self ${PROJECT_NAME})
 vita_create_vpk(${PROJECT_NAME}.vpk ${VITA_TITLEID} ${PROJECT_NAME}.self
   VERSION ${VITA_VERSION}
   NAME ${VITA_APP_NAME}
+  FILE default_playlist.m3u default_playlist.m3u
 )
