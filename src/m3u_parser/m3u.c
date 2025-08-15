@@ -26,7 +26,7 @@ void remove_trailing_crlf(char *a)
     }
 }
 
-int m3u_parse(char *filepath, struct m3u_file **m3ufile_p)
+int m3u_parse(const char *filepath, struct m3u_file **m3ufile_p)
 {
     *m3ufile_p = malloc(sizeof(struct m3u_file));
     struct m3u_file *m3ufile = *m3ufile_p;

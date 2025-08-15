@@ -10,11 +10,11 @@ struct m3u_entry {
 };
 
 struct m3u_file {
-    char *filepath;
+    const char *filepath;
     char *playlist_name;
     int nb_entries;
     struct m3u_entry *first_entry;
 };
 
-int m3u_parse(char *filepath, struct m3u_file **m3ufile_p);
+int m3u_parse(const char *filepath, struct m3u_file **m3ufile_p);
 void m3u_file_free(struct m3u_file *m3ufile);

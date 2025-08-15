@@ -3,6 +3,9 @@
 #include <string.h>
 #include <math.h>
 
+#include <imgui_vita.h>
+#include <vitaGL.h>
+
 #include <psp2/ctrl.h>
 #include <psp2/audiodec.h>
 #include <psp2/audioout.h>
@@ -17,11 +20,13 @@
 #include <psp2/paf.h>
 #include <psp2/sysmodule.h>
 
-#include "gui/debugScreen.h"
+extern "C" {
 #include "audio/mp3.h"
 #include "m3u_parser/m3u.h"
 
-// #define printf psvDebugScreenPrintf
+int _newlib_heap_size_user = 32 * 1024 * 1024;
+}
+
 #define printf sceClibPrintf
 
 #define BUFFER_LENGTH 8192
@@ -37,15 +42,15 @@ struct player {
 	enum player_state state;
 	int http_thread_id;
 	int player_thread_id;
-	char *url;
-	char *title;
+	const char *url;
+	const char *title;
 };
 
 static struct player player;
 static int audio_mutex;
 
-int play_webradio(char *url) {
-
+int play_webradio(const char *url)
+{
 	int res, tpl, conn, req;
 	SceUInt64 length = 0;
 
@@ -53,14 +58,17 @@ int play_webradio(char *url) {
 	void *recv_buffer = NULL;
 
 	SceNetInitParam net_init_param;
-	net_init_param.size = 0x800000;
+	net_init_param.size = 0x100000;
 	net_init_param.flags = 0;
+
+	printf("sceKernelAllocMemBlock...\n");
 
 	SceUID memid = sceKernelAllocMemBlock("SceNetMemory", 0x0C20D060, net_init_param.size, NULL);
 	if(memid < 0){
 		sceClibPrintf("sceKernelAllocMemBlock failed (0x%X)\n", memid);
 		return memid;
 	}
+	printf("sceKernelAllocMemBlock allocated\n");
 
 	sceKernelGetMemBlockBase(memid, &net_init_param.memory);
 
@@ -76,19 +84,19 @@ int play_webradio(char *url) {
 		goto net_term;
 	}
 
-	res = sceHttpInit(0x800000);
+	res = sceHttpInit(0x100000);
 	if(res < 0){
 		sceClibPrintf("sceHttpInit failed (0x%X)\n", res);
 		goto netctl_term;
 	}
 
-	res = sceSslInit(0x800000);
+	res = sceSslInit(0x100000);
 	if(res < 0){
 		sceClibPrintf("sceSslInit failed (0x%X)\n", res);
 		goto http_term;
 	}
 
-	tpl = sceHttpCreateTemplate("PSP2 GITHUB", 2, 1);
+	tpl = sceHttpCreateTemplate("PSVita", 2, 1);
 	if(tpl < 0){
 		sceClibPrintf("sceHttpCreateTemplate failed (0x%X)\n", tpl);
 		goto ssl_term;
@@ -187,14 +195,14 @@ free_memblk:
 	return 0;
 }
 
-int audio_thread() {
+int audio_thread(unsigned int args, void *argp) {
 	int port = -1;
 
 	int ret = 0;
 
 	unsigned char outbuffer[BUFFER_LENGTH] = {0};
-	int outsize = 0;
-	char *current_url = NULL;
+	unsigned int outsize = 0;
+	const char *current_url = NULL;
 
 	while (player.state != PLAYER_STATE_STOPPING) {
 		if (sceKernelLockMutex(audio_mutex, 1, NULL) < 0) {
@@ -224,7 +232,7 @@ int audio_thread() {
 			// int compatible_freqs[] = {8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000};
 			int vol = SCE_AUDIO_VOLUME_0DB;
 			int channels = MP3_GetChannels();
-			int channels_mode = 0;
+			SceAudioOutMode channels_mode = SCE_AUDIO_OUT_MODE_STEREO;
 			if (channels == 1) {
 				channels_mode = SCE_AUDIO_OUT_MODE_MONO;
 			} else if (channels == 2) {
@@ -235,9 +243,11 @@ int audio_thread() {
 			}
 	
 			port = sceAudioOutOpenPort(SCE_AUDIO_OUT_PORT_TYPE_BGM, NSAMPLES, MP3_GetSampleRate(), channels_mode);
-			psvDebugScreenPrintf("Playing %s %s sample_rate %i channels %i\n", player.title, player.url, MP3_GetSampleRate(), channels);
-			sceAudioOutSetConfig(port, -1, -1, -1);
-			sceAudioOutSetVolume(port, SCE_AUDIO_VOLUME_FLAG_L_CH |SCE_AUDIO_VOLUME_FLAG_R_CH, (int[]){vol,vol});
+			printf("Playing %s %s sample_rate %i channels %i\n", player.title, player.url, MP3_GetSampleRate(), channels);
+			sceAudioOutSetConfig(port, -1, -1, channels_mode);
+			SceAudioOutChannelFlag flags = (SceAudioOutChannelFlag)(SCE_AUDIO_VOLUME_FLAG_L_CH & SCE_AUDIO_VOLUME_FLAG_R_CH);
+			int volumes[2] = {vol, vol};
+			sceAudioOutSetVolume(port, flags, volumes);
 		}
 
 		sceKernelUnlockMutex(audio_mutex, 1);
@@ -254,9 +264,10 @@ audio_thread_end:
 	}
 
 	MP3_Term();
+	return 0;
 }
 
-int http_thread() {
+int http_thread(unsigned int args, void *argp) {
 	int playing = 0;
 	while (player.state != PLAYER_STATE_STOPPING)
 	{
@@ -298,12 +309,32 @@ int copyfile(const char *destfile, const char *srcfile)
 
 	fclose(fin);
 	fclose(fout);
+	return 0;
 }
 
-int main(void) {
-	psvDebugScreenInit();
+int main(void)
+{
+	vglInitExtended(0, 960, 544, 0x1800000, SCE_GXM_MULTISAMPLE_4X);
 
-	char *path = "uma0:/data/webradio/playlist.m3u";
+	// Setup ImGui binding
+	ImGui::CreateContext();
+	ImGuiIO& io = ImGui::GetIO(); (void)io;
+	ImGui_ImplVitaGL_Init();
+
+	// Setup style
+	ImGui::StyleColorsDark();
+
+	bool show_demo_window = true;
+	bool show_another_window = false;
+	ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+
+	ImGui_ImplVitaGL_TouchUsage(true);
+	ImGui_ImplVitaGL_UseIndirectFrontTouch(false);
+	ImGui_ImplVitaGL_UseRearTouch(true);
+	ImGui_ImplVitaGL_GamepadUsage(true);
+
+	// Get or write playlist
+	const char *path = "uma0:/data/webradio/playlist.m3u";
 	struct m3u_file *m3ufile = NULL;
 	if (m3u_parse(path, &m3ufile)) {
 		m3u_file_free(m3ufile);
@@ -328,11 +359,13 @@ int main(void) {
 		}
 	}
 
+	printf("Step 1 done\n");
+
 	int res;
 	SceUInt32 paf_init_param[6];
 	SceSysmoduleOpt sysmodule_opt;
 
-	paf_init_param[0] = 0x4000000;
+	paf_init_param[0] = 0x1100000;
 	paf_init_param[1] = 0;
 	paf_init_param[2] = 0;
 	paf_init_param[3] = 0;
@@ -344,7 +377,10 @@ int main(void) {
 	sysmodule_opt.result = &res;
 
 	sceSysmoduleLoadModuleInternalWithArg(SCE_SYSMODULE_INTERNAL_PAF, sizeof(paf_init_param), &paf_init_param, &sysmodule_opt);
+	printf("Step 2 done\n");
 	sceSysmoduleLoadModule(SCE_SYSMODULE_HTTPS);
+
+	printf("Step 2 bis done\n");
 
 	audio_mutex = sceKernelCreateMutex("audioMutex", 0, 0, NULL);
 	if (audio_mutex < 0) {
@@ -352,11 +388,15 @@ int main(void) {
 		return 1;
 	}
 
+	printf("Step 3 done\n");
+
 	int ret = MP3_Init();
 	if (ret) {
 		printf("MP3_Init %i\n", ret);
 		return 1;
 	}
+
+	printf("Step 4 done\n");
 
 	SceCtrlData ctrl_peek, ctrl_press;
 
@@ -389,8 +429,58 @@ int main(void) {
 	player.url = current_entry->url;
 	player.title = current_entry->title;
 	player.state = PLAYER_STATE_PLAYING;
+
+	printf("Step 5 done\n");
  
-	do {
+	// Main loop
+	bool done = false;
+	while (!done) {
+		ImGui_ImplVitaGL_NewFrame();
+
+		if (ImGui::BeginMainMenuBar()){
+			if (ImGui::BeginMenu("Debug")){
+				ImGui::EndMenu();
+			}
+			ImGui::EndMainMenuBar();
+		}
+
+		// 1. Show a simple window.
+		// Tip: if we don't call ImGui::Begin()/ImGui::End() the widgets automatically appears in a window called "Debug".
+		{
+			static float f = 0.0f;
+			static int counter = 0;
+			ImGui::Text("Hello, world!");						   // Display some text (you can use a format string too)
+			ImGui::SliderFloat("float", &f, 0.0f, 1.0f);			// Edit 1 float using a slider from 0.0f to 1.0f	
+			ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
+
+			ImGui::Checkbox("Demo Window", &show_demo_window);	  // Edit bools storing our windows open/close state
+			ImGui::Checkbox("Another Window", &show_another_window);
+
+			if (ImGui::Button("Button"))							// Buttons return true when clicked (NB: most widgets return true when edited/activated)
+				counter++;
+			ImGui::SameLine();
+			ImGui::Text("counter = %d", counter);
+
+			ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+		}
+
+			// 2. Show another simple window. In most cases you will use an explicit Begin/End pair to name your windows.
+		if (show_another_window)
+		{
+			ImGui::Begin("Another Window", &show_another_window);
+			ImGui::Text("Hello from another window!");
+			if (ImGui::Button("Close Me"))
+				show_another_window = false;
+			ImGui::End();
+		}
+
+		// 3. Show the ImGui demo window. Most of the sample code is in ImGui::ShowDemoWindow(). Read its code to learn more about Dear ImGui!
+		if (show_demo_window)
+		{
+			ImGui::SetNextWindowPos(ImVec2(650, 20), ImGuiCond_FirstUseEver); // Normally user code doesn't need/want to call this because positions are saved in .ini file anyway. Here we just want to make the demo initial state a bit more friendly!
+			ImGui::ShowDemoWindow(&show_demo_window);
+		}
+
 		ctrl_press = ctrl_peek;
 		sceCtrlPeekBufferPositive(0, &ctrl_peek, 1);
 		ctrl_press.buttons = ctrl_peek.buttons & ~ctrl_press.buttons;
@@ -400,7 +490,7 @@ int main(void) {
 				// Stopping
 				player.state = PLAYER_STATE_WAITING;
 			} else {
-				psvDebugScreenPrintf("Playing %s %s\n", current_entry->title, current_entry->url);
+				printf("Playing %s %s\n", current_entry->title, current_entry->url);
 				player.url = current_entry->url;
 				player.title = current_entry->title;
 				player.state = PLAYER_STATE_PLAYING;
@@ -408,19 +498,28 @@ int main(void) {
 		} else if (ctrl_press.buttons & SCE_CTRL_CIRCLE) {
 			if (current_entry->next) {
 				current_entry = current_entry->next;
-				psvDebugScreenPrintf("Playing %s %s\n", current_entry->title, current_entry->url);
+				printf("Playing %s %s\n", current_entry->title, current_entry->url);
 				player.url = current_entry->url;
 				player.title = current_entry->title;
 				player.state = PLAYER_STATE_PLAYING;
 			}
+		} else if (ctrl_press.buttons & SCE_CTRL_START) {
+			done = true;
 		}
 
-		sceKernelDelayThread(100000); // Delay for 100 ms
-	} while (ctrl_press.buttons != SCE_CTRL_START);
+		// Rendering
+		glViewport(0, 0, (int)ImGui::GetIO().DisplaySize.x, (int)ImGui::GetIO().DisplaySize.y);
+		glClearColor(clear_color.x, clear_color.y, clear_color.z, clear_color.w);
+		glClear(GL_COLOR_BUFFER_BIT);
+		ImGui::Render();
+		ImGui_ImplVitaGL_RenderDrawData(ImGui::GetDrawData());
+		vglSwapBuffers(GL_FALSE);
+	}
 
 	player.state = PLAYER_STATE_STOPPING;
 
-	int exitstatus = 0, timeout = 2000000;
+	int exitstatus = 0;
+	SceUInt timeout = 10000000;
 
 	ret = sceKernelWaitThreadEnd(player.http_thread_id, &exitstatus, &timeout);
     if (ret < 0 || exitstatus != 0)
@@ -438,6 +537,11 @@ int main(void) {
     sceKernelDeleteThread(player.http_thread_id);
 
 	sceKernelDeleteMutex(audio_mutex);
+
+	// Cleanup
+	ImGui_ImplVitaGL_Shutdown();
+	ImGui::DestroyContext();
+	vglEnd();
 
 	sceSysmoduleUnloadModule(SCE_SYSMODULE_HTTPS);
 	sceSysmoduleUnloadModuleInternal(SCE_SYSMODULE_INTERNAL_PAF);
