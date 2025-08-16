@@ -56,9 +56,14 @@ target_link_libraries(${PROJECT_NAME}
   m
 )
 
-vita_create_self(${PROJECT_NAME}.self ${PROJECT_NAME})
-vita_create_vpk(${PROJECT_NAME}.vpk ${VITA_TITLEID} ${PROJECT_NAME}.self
+vita_create_self(eboot.bin ${PROJECT_NAME} UNSAFE)
+vita_create_vpk(${PROJECT_NAME}.vpk ${VITA_TITLEID} eboot.bin
   VERSION ${VITA_VERSION}
   NAME ${VITA_APP_NAME}
-  FILE default_playlist.m3u default_playlist.m3u
+  FILE ${CMAKE_SOURCE_DIR}/livearea/icon0.png sce_sys/icon0.png
+       ${CMAKE_SOURCE_DIR}/livearea/pic0.png sce_sys/pic0.png
+       ${CMAKE_SOURCE_DIR}/livearea/bg0.png sce_sys/livearea/contents/bg0.png
+       ${CMAKE_SOURCE_DIR}/livearea/template.xml sce_sys/livearea/contents/template.xml
+       ${CMAKE_SOURCE_DIR}/default_playlist.m3u default_playlist.m3u
+       ${CMAKE_SOURCE_DIR}/README.md README.md
 )
