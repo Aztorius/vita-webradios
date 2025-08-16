@@ -323,7 +323,7 @@ int main(void)
 
 	bool show_demo_window = true;
 	bool show_another_window = false;
-	ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
+	ImVec4 clear_color = ImVec4(0.0f, 0.0f, 0.0f, 1.00f);
 
 	ImGui_ImplVitaGL_TouchUsage(true);
 	ImGui_ImplVitaGL_UseIndirectFrontTouch(false);
@@ -413,11 +413,12 @@ int main(void)
 	// Main loop
 	bool done = false;
 	static bool show_app = false;
+	bool show_main_widget = true;
 	static ImGuiWindowFlags flags = (ImGuiWindowFlags)(ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize);
 	while (!done) {
 		ImGui_ImplVitaGL_NewFrame();
 
-		{
+		if (show_main_widget) {
 			ImGui::GetIO().MouseDrawCursor = false;
 			
     		ImGui::SetNextWindowPos(ImVec2(0, 0));
@@ -432,6 +433,11 @@ int main(void)
 				} else {
 					ImGui::Text("Standby");
 				}
+
+				ImGui::Separator();
+
+				ImGui::Text("Add your webradios to ux0:/data/webradio/playlist.m3u");
+				ImGui::Text("Press circle to hide user interface");
 
 				ImGui::Separator();
 				m3u_entry *drawEntry = m3ufile->first_entry;
@@ -464,6 +470,8 @@ int main(void)
 
 		if (ctrl_press.buttons & SCE_CTRL_START) {
 			done = true;
+		} else if (ctrl_press.buttons & SCE_CTRL_CIRCLE) {
+			show_main_widget = !show_main_widget;
 		}
 
 		// Rendering
