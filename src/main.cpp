@@ -331,29 +331,17 @@ int main(void)
 	ImGui_ImplVitaGL_GamepadUsage(true);
 
 	// Get or write playlist
-	const char *path = "uma0:/data/webradio/playlist.m3u";
 	struct m3u_file *m3ufile = NULL;
-	if (m3u_parse(path, &m3ufile)) {
+	if (m3u_parse("ux0:/data/webradio/playlist.m3u", &m3ufile)) {
 		m3u_file_free(m3ufile);
-		path = "ux0:/data/webradio/playlist.m3u";
-		if (m3u_parse(path, &m3ufile)) {
-			m3u_file_free(m3ufile);
-			// Playlist missing, creating default playlist
-			if (sceIoMkdir("uma0:/data", 0777)) {
-				// Using ux0
-				sceIoMkdir("ux0:/data", 0777);
-				sceIoMkdir("ux0:/data/webradio", 0777);
-				path = "ux0:/data/webradio/playlist.m3u";
-			} else {
-				// Using uma0
-				sceIoMkdir("uma0:/data/webradio", 0777);
-				path = "uma0:/data/webradio/playlist.m3u";
-			}
+		
+		// Playlist missing, creating default playlist
+		sceIoMkdir("ux0:/data", 0777);
+		sceIoMkdir("ux0:/data/webradio", 0777);
 
-			// Copying playlist to correct location
-			copyfile(path, "default_playlist.m3u");
-			m3u_parse(path, &m3ufile);
-		}
+		// Copying playlist to correct location
+		copyfile("ux0:/data/webradio/playlist.m3u", "default_playlist.m3u");
+		m3u_parse("ux0:/data/webradio/playlist.m3u", &m3ufile);
 	}
 
 	int res;
