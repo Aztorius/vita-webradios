@@ -34,6 +34,7 @@ int _newlib_heap_size_user = 32 * 1024 * 1024;
 
 enum player_state {
 	PLAYER_STATE_WAITING,
+	PLAYER_STATE_NEW,
 	PLAYER_STATE_PLAYING,
 	PLAYER_STATE_STOPPING,
 };
@@ -131,6 +132,7 @@ int play_webradio(const char *url)
 		}
 
 		int ret = 0;
+		player.state = PLAYER_STATE_PLAYING;
 
 		while (player.state == PLAYER_STATE_PLAYING && player.url == url) {
 			res = sceHttpReadData(req, recv_buffer, 0x10000);
@@ -199,7 +201,6 @@ int audio_thread(unsigned int args, void *argp) {
 
 	unsigned char outbuffer[BUFFER_LENGTH] = {0};
 	unsigned int outsize = 0;
-	const char *current_url = NULL;
 
 	while (player.state != PLAYER_STATE_STOPPING) {
 		if (sceKernelLockMutex(audio_mutex, 1, NULL) < 0) {
@@ -208,8 +209,7 @@ int audio_thread(unsigned int args, void *argp) {
 			continue;
 		}
 
-		if (player.state == PLAYER_STATE_WAITING || player.url != current_url) {
-			current_url = player.url;
+		if (player.state == PLAYER_STATE_WAITING || player.state == PLAYER_STATE_NEW) {
 			do {
 				// Consume everything
 				ret = MP3_Decode(NULL, 0, outbuffer, BUFFER_LENGTH, &outsize);
@@ -268,7 +268,7 @@ int http_thread(unsigned int args, void *argp) {
 	int playing = 0;
 	while (player.state != PLAYER_STATE_STOPPING)
 	{
-		if (!playing && player.state == PLAYER_STATE_PLAYING) {
+		if (!playing && player.state == PLAYER_STATE_NEW) {
 			playing = 1;
 			play_webradio(player.url);
 			playing = 0;
@@ -408,7 +408,7 @@ int main(void)
 
 	player.url = current_entry->url;
 	player.title = current_entry->title;
-	player.state = PLAYER_STATE_PLAYING;
+	player.state = PLAYER_STATE_NEW;
  
 	// Main loop
 	bool done = false;
@@ -427,6 +427,8 @@ int main(void)
 			{
 				if (player.url && player.title && player.state == PLAYER_STATE_PLAYING) {
 					ImGui::Text("Playing %s from %s", player.title, player.url);
+				} else if (player.url && player.title && player.state == PLAYER_STATE_NEW) {
+					ImGui::Text("Connecting to %s from %s", player.title, player.url);
 				} else {
 					ImGui::Text("Standby");
 				}
@@ -448,7 +450,7 @@ int main(void)
 						printf("Playing %s %s\n", current_entry->title, current_entry->url);
 						player.url = current_entry->url;
 						player.title = current_entry->title;
-						player.state = PLAYER_STATE_PLAYING;
+						player.state = PLAYER_STATE_NEW;
 					}
 					drawEntry = drawEntry->next;
 				}
