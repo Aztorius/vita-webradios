@@ -431,10 +431,21 @@ int main(void)
 				ImGui::Separator();
 				m3u_entry *drawEntry = m3ufile->first_entry;
 				while (drawEntry) {
+					const char *button_text = NULL;
 					if (drawEntry->title) {
-						ImGui::Button(drawEntry->title, ImVec2(960, 30));
+						button_text = drawEntry->title;
 					} else if (drawEntry->url) {
-						ImGui::Button(drawEntry->url, ImVec2(960, 30));
+						button_text = drawEntry->url;
+					} else {
+						button_text = "Unknown";
+					}
+
+					if (ImGui::Button(button_text, ImVec2(960, 30))) {
+						current_entry = drawEntry;
+						printf("Playing %s %s\n", current_entry->title, current_entry->url);
+						player.url = current_entry->url;
+						player.title = current_entry->title;
+						player.state = PLAYER_STATE_PLAYING;
 					}
 					drawEntry = drawEntry->next;
 				}
@@ -446,25 +457,7 @@ int main(void)
 		sceCtrlPeekBufferPositive(0, &ctrl_peek, 1);
 		ctrl_press.buttons = ctrl_peek.buttons & ~ctrl_press.buttons;
 
-		if (ctrl_press.buttons & SCE_CTRL_CROSS) {
-			if (player.state == PLAYER_STATE_PLAYING) {
-				// Stopping
-				player.state = PLAYER_STATE_WAITING;
-			} else {
-				printf("Playing %s %s\n", current_entry->title, current_entry->url);
-				player.url = current_entry->url;
-				player.title = current_entry->title;
-				player.state = PLAYER_STATE_PLAYING;
-			}
-		} else if (ctrl_press.buttons & SCE_CTRL_CIRCLE) {
-			if (current_entry->next) {
-				current_entry = current_entry->next;
-				printf("Playing %s %s\n", current_entry->title, current_entry->url);
-				player.url = current_entry->url;
-				player.title = current_entry->title;
-				player.state = PLAYER_STATE_PLAYING;
-			}
-		} else if (ctrl_press.buttons & SCE_CTRL_START) {
+		if (ctrl_press.buttons & SCE_CTRL_START) {
 			done = true;
 		}
 
