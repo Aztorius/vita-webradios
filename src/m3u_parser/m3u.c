@@ -86,12 +86,12 @@ int m3u_parse(const char *filepath, struct m3u_file **m3ufile_p)
             
             entry->previous = NULL;
             entry->next = NULL;
-            entry->url = malloc(length);
+            entry->url = malloc(length + 1);
             if (!entry->url) {
                 printf("Cannot allocate entry url %i bytes\n", length);
                 return -1;
             }
-            strncpy(entry->url, buffer, length);
+            strncpy(entry->url, buffer, length + 1);
             entry->logo_url = NULL;
             entry->title = NULL;
 
