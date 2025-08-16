@@ -50,7 +50,7 @@ int m3u_parse(const char *filepath, struct m3u_file **m3ufile_p)
         return -1;
     }
 
-    char buffer[1024];
+    char buffer[1024] = {0};
     char *title = NULL;
     while (fgets(buffer, 1024, fp)) {
         remove_trailing_crlf(buffer);
@@ -71,9 +71,9 @@ int m3u_parse(const char *filepath, struct m3u_file **m3ufile_p)
                 if (length_until_title > 1 && length_until_title < length) {
                     if (title)
                         free(title);
-
-                    title = malloc(length - length_until_title);
-                    strncpy(title, buffer + length_until_title, length - length_until_title);
+                    
+                    title = malloc(length - length_until_title + 1);
+                    strncpy(title, buffer + length_until_title, length - length_until_title + 1);
                 }
             }
         } else {

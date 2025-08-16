@@ -335,6 +335,7 @@ int main(void)
 	struct m3u_file *m3ufile = NULL;
 	if (m3u_parse("ux0:/data/webradio/playlist.m3u", &m3ufile)) {
 		m3u_file_free(m3ufile);
+		m3ufile = NULL;
 		
 		// Playlist missing, creating default playlist
 		sceIoMkdir("ux0:/data", 0777);
@@ -342,7 +343,9 @@ int main(void)
 
 		// Copying playlist to correct location
 		copyfile("ux0:/data/webradio/playlist.m3u", "default_playlist.m3u");
-		m3u_parse("ux0:/data/webradio/playlist.m3u", &m3ufile);
+		if (m3u_parse("ux0:/data/webradio/playlist.m3u", &m3ufile)) {
+			printf("Error on parsing default playlist !");
+		}
 	}
 
 	int res;
