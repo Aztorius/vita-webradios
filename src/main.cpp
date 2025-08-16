@@ -437,7 +437,7 @@ int main(void)
 				ImGui::Separator();
 
 				ImGui::Text("Add your webradios to ux0:/data/webradio/playlist.m3u");
-				ImGui::Text("Press circle to hide user interface");
+				ImGui::Text("(circle) show/hide user interface, (square) stop audio, (cross) play selected radio");
 
 				ImGui::Separator();
 				m3u_entry *drawEntry = m3ufile->first_entry;
@@ -472,6 +472,8 @@ int main(void)
 			done = true;
 		} else if (ctrl_press.buttons & SCE_CTRL_CIRCLE) {
 			show_main_widget = !show_main_widget;
+		} else if (ctrl_press.buttons & SCE_CTRL_SQUARE) {
+			player.state = PLAYER_STATE_WAITING;
 		}
 
 		// Rendering
