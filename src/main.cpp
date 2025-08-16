@@ -493,7 +493,6 @@ int main(void)
 	sceKernelDeleteMutex(audio_mutex);
 
 	// Cleanup
-	ImGui_ImplVitaGL_Shutdown();
 	ImGui::DestroyContext();
 	vglEnd();
 
