@@ -4,7 +4,6 @@
 struct neon_fft_config {
     ne10_fft_r2c_cfg_int16_t cfg;
     ne10_int16_t *src_buffer;
-    int src_buffer_size;
     ne10_fft_cpx_int16_t *dst_buffer;
     int nbsamples;
     int samplerate;

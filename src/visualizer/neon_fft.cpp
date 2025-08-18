@@ -27,7 +27,6 @@ neon_fft_config *neon_fft_init(int nbsamples, int samplerate, int channel_mode)
     }
 
     cfg->channel_mode = channel_mode;
-    cfg->src_buffer_size = 0;
 
     // Initialise Ne10, using hardware auto-detection to set library function pointers
     if (ne10_init() != NE10_OK)
