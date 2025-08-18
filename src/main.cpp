@@ -51,6 +51,7 @@ struct player {
 
 static struct player player;
 static int audio_mutex;
+static int visualizer_mutex;
 
 int play_webradio(const char *url)
 {
@@ -251,7 +252,9 @@ int audio_thread(unsigned int args, void *argp) {
 				goto audio_thread_end;
 			}
 
+			sceKernelLockMutex(visualizer_mutex, 1, NULL);
 			player.visualizer_config = neon_fft_init(nsamples, samplerate, channels);
+			sceKernelUnlockMutex(visualizer_mutex, 1);
 	
 			port = sceAudioOutOpenPort(SCE_AUDIO_OUT_PORT_TYPE_BGM, nsamples, samplerate, channels_mode);
 			printf("Playing %s %s sample_rate %i channels %i\n", player.title, player.url, samplerate, channels);
@@ -264,9 +267,9 @@ int audio_thread(unsigned int args, void *argp) {
 		sceKernelUnlockMutex(audio_mutex, 1);
 
 		if (outsize > 0) {
-			if (neon_fft_fill_src_buffer(player.visualizer_config, (int16_t*)outbuffer, outsize / (2 * channels))) {
-				// TODO : show visualization
-			}
+			sceKernelLockMutex(visualizer_mutex, 1, NULL);
+			neon_fft_fill_src_buffer(player.visualizer_config, (int16_t*)outbuffer, outsize / (2 * channels));
+			sceKernelUnlockMutex(visualizer_mutex, 1);
 		}
 	
 		if (outsize > 0) {
@@ -393,6 +396,12 @@ int main(void)
 		return 1;
 	}
 
+	visualizer_mutex = sceKernelCreateMutex("visualizerMutex", 0, 0, NULL);
+	if (visualizer_mutex < 0) {
+		printf("Error creating mutex\n");
+		return 1;
+	}
+
 	int ret = MP3_Init();
 	if (ret) {
 		printf("MP3_Init %i\n", ret);
@@ -446,7 +455,7 @@ int main(void)
     		ImGui::SetNextWindowPos(ImVec2(0, 0));
 	    	ImGui::SetNextWindowSize(ImVec2(960, 544));
 
-			if (ImGui::Begin("Example: Fullscreen window", &show_app, flags))
+			if (ImGui::Begin("Vita Webradio", &show_app, flags))
 			{
 				if (player.url && player.title && player.state == PLAYER_STATE_PLAYING) {
 					ImGui::Text("Playing %s from %s", player.title, player.url);
@@ -482,8 +491,23 @@ int main(void)
 					}
 					drawEntry = drawEntry->next;
 				}
+
 				ImGui::End();
 			}
+		} else {
+			ImGui::SetNextWindowPos(ImVec2(0, 0));
+	    	ImGui::SetNextWindowSize(ImVec2(960, 544));
+
+			ImGui::Begin("Vita Webradio Visualizer", &show_app, flags);
+			sceKernelLockMutex(visualizer_mutex, 1, NULL);
+			if (player.state == PLAYER_STATE_PLAYING && player.visualizer_config && player.visualizer_config->dst_buffer) {
+				for (int i = 0; i < player.visualizer_config->nbsamples / 2; i++) {
+					float value = sqrt((float)(((int16_t*)player.visualizer_config->dst_buffer)[i])); // Reduce to max value 512
+					ImGui::GetWindowDrawList()->AddLine(ImVec2((float)i, 540.0), ImVec2((float)i, value), IM_COL32(0, 128, 0, 128));
+				}
+			}
+			sceKernelUnlockMutex(visualizer_mutex, 1);
+			ImGui::End();
 		}
 
 		ctrl_press = ctrl_peek;
@@ -528,6 +552,7 @@ int main(void)
     sceKernelDeleteThread(player.http_thread_id);
 
 	sceKernelDeleteMutex(audio_mutex);
+	sceKernelDeleteMutex(visualizer_mutex);
 
 	// Cleanup
 	ImGui::DestroyContext();

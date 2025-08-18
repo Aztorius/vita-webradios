@@ -111,7 +111,10 @@ int spectrum_analyser(neon_fft_config *cfg)
     // Perform the FFT
     ne10_fft_r2c_1d_int16(cfg->dst_buffer, cfg->src_buffer, cfg->cfg, 0);
 
+    // We have results of FFT inside dst_buffer and we will compute and store magnitude
+    // values inside this same buffer (just half less data)
     const int16_t *dst_buffer_ptr = (const int16_t*)cfg->dst_buffer;
+    int16_t *result_ptr = (int16_t*)cfg->dst_buffer;
 
     // Display the results
     for (int i = 0; i <= cfg->nbsamples / (2 * 8); i++)
@@ -125,11 +128,10 @@ int spectrum_analyser(neon_fft_config *cfg)
         real_numbers = vqdmulh_s16(real_numbers, real_numbers);
         imaginary_numbers = vqdmulh_s16(imaginary_numbers, imaginary_numbers);
         int16x4_t result = vhadd_s16(real_numbers, imaginary_numbers);
-        int16_t data[4];
-        vst1_s16(data, result);
-        printf("%i %i %i %i\n", data[0], data[1], data[2], data[3]);
+        vst1_s16(result_ptr, result);
 
         dst_buffer_ptr += 8;
+        result_ptr += 4;
     }
 
     return 0;
