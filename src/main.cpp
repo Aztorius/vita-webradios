@@ -261,13 +261,13 @@ int audio_thread(unsigned int args, void *argp) {
 			sceAudioOutSetVolume(port, flags, volumes);
 		}
 
+		sceKernelUnlockMutex(audio_mutex, 1);
+
 		if (outsize > 0) {
 			if (neon_fft_fill_src_buffer(player.visualizer_config, (int16_t*)outbuffer, outsize / (2 * channels))) {
 				// TODO : show visualization
 			}
 		}
-
-		sceKernelUnlockMutex(audio_mutex, 1);
 	
 		if (outsize > 0) {
 			sceAudioOutOutput(port, outbuffer);
