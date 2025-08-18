@@ -2,8 +2,12 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <psp2/kernel/clib.h>
+
 #include "audio.h"
 // #include "config.h"
+
+#define printf sceClibPrintf
 
 // For MP3 ID3 tags
 struct genre {
