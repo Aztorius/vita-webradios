@@ -20,17 +20,18 @@
 #include <psp2/paf.h>
 #include <psp2/sysmodule.h>
 
+#include "visualizer/neon_fft.hpp"
+
 extern "C" {
 #include "audio/mp3.h"
 #include "m3u_parser/m3u.h"
 
-int _newlib_heap_size_user = 32 * 1024 * 1024;
+int _newlib_heap_size_user = 48 * 1024 * 1024;
 }
 
 #define printf sceClibPrintf
 
 #define BUFFER_LENGTH 8192
-#define NSAMPLES 2048
 
 enum player_state {
 	PLAYER_STATE_WAITING,
@@ -45,6 +46,7 @@ struct player {
 	int player_thread_id;
 	const char *url;
 	const char *title;
+	neon_fft_config *visualizer_config;
 };
 
 static struct player player;
@@ -201,6 +203,7 @@ int audio_thread(unsigned int args, void *argp) {
 
 	unsigned char outbuffer[BUFFER_LENGTH] = {0};
 	unsigned int outsize = 0;
+	int channels = 0;
 
 	while (player.state != PLAYER_STATE_STOPPING) {
 		if (sceKernelLockMutex(audio_mutex, 1, NULL) < 0) {
@@ -225,34 +228,52 @@ int audio_thread(unsigned int args, void *argp) {
 			if (port >= 0) {
 				sceAudioOutReleasePort(port);
 			}
+
+			if (player.visualizer_config) {
+				neon_fft_free(player.visualizer_config);
+				player.visualizer_config = nullptr;
+			}
 	
-			// int compatible_freqs[] = {8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000};
 			int vol = SCE_AUDIO_VOLUME_0DB;
-			int channels = MP3_GetChannels();
+			channels = MP3_GetChannels();
+			int samplerate = MP3_GetSampleRate();
+			int nsamples = 0;
+			// int compatible_freqs[] = {8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000};
 			SceAudioOutMode channels_mode = SCE_AUDIO_OUT_MODE_STEREO;
 			if (channels == 1) {
 				channels_mode = SCE_AUDIO_OUT_MODE_MONO;
+				nsamples = BUFFER_LENGTH >> 1; // 2 bytes per sample in mono mode
 			} else if (channels == 2) {
 				channels_mode = SCE_AUDIO_OUT_MODE_STEREO;
+				nsamples = BUFFER_LENGTH >> 2; // 4 bytes per sample in stereo mode (2x2)
 			} else {
 				printf("Wrong number of channel in stream !");
 				goto audio_thread_end;
 			}
+
+			player.visualizer_config = neon_fft_init(nsamples, samplerate, channels);
 	
-			port = sceAudioOutOpenPort(SCE_AUDIO_OUT_PORT_TYPE_BGM, NSAMPLES, MP3_GetSampleRate(), channels_mode);
-			printf("Playing %s %s sample_rate %i channels %i\n", player.title, player.url, MP3_GetSampleRate(), channels);
+			port = sceAudioOutOpenPort(SCE_AUDIO_OUT_PORT_TYPE_BGM, nsamples, samplerate, channels_mode);
+			printf("Playing %s %s sample_rate %i channels %i\n", player.title, player.url, samplerate, channels);
 			sceAudioOutSetConfig(port, -1, -1, channels_mode);
 			SceAudioOutChannelFlag flags = (SceAudioOutChannelFlag)(SCE_AUDIO_VOLUME_FLAG_L_CH & SCE_AUDIO_VOLUME_FLAG_R_CH);
 			int volumes[2] = {vol, vol};
 			sceAudioOutSetVolume(port, flags, volumes);
 		}
 
+		if (outsize > 0) {
+			if (neon_fft_fill_src_buffer(player.visualizer_config, (int16_t*)outbuffer, outsize / (2 * channels))) {
+				// TODO : show visualization
+			}
+		}
+
 		sceKernelUnlockMutex(audio_mutex, 1);
 	
-		if (outsize > 0)
+		if (outsize > 0) {
 			sceAudioOutOutput(port, outbuffer);
-		else
+		} else {
 			sceKernelDelayThread(100000); // Delay for 100 ms
+		}
 	}
 
 audio_thread_end:
@@ -397,6 +418,7 @@ int main(void)
 
 	player.player_thread_id = thid;
 	player.state = PLAYER_STATE_WAITING;
+	player.visualizer_config = nullptr;
 	sceKernelStartThread(player.player_thread_id, 0, 0);
 	sceKernelStartThread(player.http_thread_id, 0, 0);
 

@@ -24,6 +24,7 @@ add_executable(${PROJECT_NAME}
   src/audio/mp3.c
   src/m3u_parser/m3u.c
   src/gui/imgui_demo.cpp
+  src/visualizer/neon_fft.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}
@@ -52,6 +53,7 @@ target_link_libraries(${PROJECT_NAME}
   SceSysmem_stub
   SceLibKernel_stub
   mpg123
+  NE10
   mathneon
   m
 )
