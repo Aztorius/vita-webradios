@@ -26,7 +26,7 @@ extern "C" {
 #include "audio/mp3.h"
 #include "m3u_parser/m3u.h"
 
-int _newlib_heap_size_user = 48 * 1024 * 1024;
+int _newlib_heap_size_user = 54 * 1024 * 1024;
 }
 
 #define printf sceClibPrintf
@@ -231,8 +231,10 @@ int audio_thread(unsigned int args, void *argp) {
 			}
 
 			if (player.visualizer_config) {
+				sceKernelLockMutex(visualizer_mutex, 1, NULL);
 				neon_fft_free(player.visualizer_config);
 				player.visualizer_config = nullptr;
+				sceKernelUnlockMutex(visualizer_mutex, 1);
 			}
 	
 			int vol = SCE_AUDIO_VOLUME_0DB;
@@ -252,9 +254,12 @@ int audio_thread(unsigned int args, void *argp) {
 				goto audio_thread_end;
 			}
 
-			sceKernelLockMutex(visualizer_mutex, 1, NULL);
-			player.visualizer_config = neon_fft_init(128, samplerate, channels);
-			sceKernelUnlockMutex(visualizer_mutex, 1);
+			if (sceKernelLockMutex(visualizer_mutex, 1, NULL) >= 0) {
+				player.visualizer_config = neon_fft_init(2048, samplerate, channels);
+				sceKernelUnlockMutex(visualizer_mutex, 1);
+			} else {
+				printf("visualizer_mutex lock error\n");
+			}
 	
 			port = sceAudioOutOpenPort(SCE_AUDIO_OUT_PORT_TYPE_BGM, nsamples, samplerate, channels_mode);
 			printf("Playing %s %s sample_rate %i channels %i\n", player.title, player.url, samplerate, channels);
@@ -265,14 +270,14 @@ int audio_thread(unsigned int args, void *argp) {
 		}
 
 		sceKernelUnlockMutex(audio_mutex, 1);
-
+		
 		if (outsize > 0) {
-			sceKernelLockMutex(visualizer_mutex, 1, NULL);
-			neon_fft_fill_src_buffer(player.visualizer_config, (int16_t*)outbuffer, outsize / (2 * channels));
-			sceKernelUnlockMutex(visualizer_mutex, 1);
-		}
-	
-		if (outsize > 0) {
+			if (sceKernelLockMutex(visualizer_mutex, 1, NULL) >= 0) {
+				neon_fft_fill_buffer(player.visualizer_config, (int16_t*)outbuffer, outsize / (2 * channels)); // 2 bytes per sample
+				sceKernelUnlockMutex(visualizer_mutex, 1);
+			} else {
+				printf("visualizer_mutex lock error\n");
+			}
 			sceAudioOutOutput(port, outbuffer);
 		} else {
 			sceKernelDelayThread(100000); // Delay for 100 ms
@@ -502,8 +507,12 @@ int main(void)
 			sceKernelLockMutex(visualizer_mutex, 1, NULL);
 			if (player.state == PLAYER_STATE_PLAYING && player.visualizer_config && player.visualizer_config->visualizer_data) {
 				spectrum_analyser(player.visualizer_config);
-				for (int i = 0; i < player.visualizer_config->nbsamples / 2; i++) {
-					ImGui::GetWindowDrawList()->AddRectFilled(ImVec2((float)i * (960.0 / (player.visualizer_config->nbsamples / 2)), 540.0), ImVec2((float)(i + 1) * (960.0 / (player.visualizer_config->nbsamples / 2)), 540.0 - player.visualizer_config->visualizer_data[i]), IM_COL32(0, 128, 0, 255));
+				int bar_length = (FFT_BUFFER_LENGTH / 2) / 960;
+				for (int i = 0; i < 960; i++) {
+					// ImGui::GetWindowDrawList()->AddRectFilled(ImVec2((float)i, 540.0), ImVec2((float)(i+1), 540.0 - player.visualizer_config->visualizer_data[i]), IM_COL32(0, 128, 0, 255));
+					// ImGui::GetWindowDrawList()->AddLine(ImVec2((float)i * (960.0 / (FFT_BUFFER_LENGTH / 2)), 540.0 - player.visualizer_config->visualizer_data[i]), ImVec2((float)(i + 1) * (960.0 / (FFT_BUFFER_LENGTH / 2)), 540.0 - player.visualizer_config->visualizer_data[i]), IM_COL32(0, 128, 0, 255));
+					// ImGui::GetWindowDrawList()->AddLine(ImVec2((float)i*16, 270.0 - player.visualizer_config->src_buffer[i] / 128), ImVec2((float)(i+1)*16, 270.0 - player.visualizer_config->src_buffer[i+1] / 128), IM_COL32(0, 128, 0, 255));
+					ImGui::GetWindowDrawList()->AddLine(ImVec2((float)i, 540.0), ImVec2((float)i, 540.0 - (player.visualizer_config->saved_buffer[i] >> 6)), IM_COL32(0, 128, 0, 255));
 				}
 			}
 			sceKernelUnlockMutex(visualizer_mutex, 1);

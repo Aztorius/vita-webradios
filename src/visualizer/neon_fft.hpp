@@ -1,8 +1,11 @@
 
 #include <NE10.h>
 
+#define FFT_BUFFER_LENGTH    65536
+
 struct neon_fft_config {
     ne10_fft_r2c_cfg_int16_t cfg;
+    ne10_int16_t *saved_buffer;
     ne10_int16_t *src_buffer;
     ne10_fft_cpx_int16_t *dst_buffer;
     int nbsamples;
@@ -14,4 +17,4 @@ struct neon_fft_config {
 neon_fft_config *neon_fft_init(int nbsamples, int samplerate, int channel_mode);
 void neon_fft_free(neon_fft_config *cfg);
 int spectrum_analyser(neon_fft_config *cfg);
-int neon_fft_fill_src_buffer(neon_fft_config *cfg, int16_t *raw_data, int nbsamples);
+void neon_fft_fill_buffer(neon_fft_config *cfg, int16_t *raw_data, int nbsamples);

@@ -2,13 +2,14 @@
 #include <stdlib.h>
 #include <arm_neon.h>
 #include <math.h>
+#include <cstring>
 
 #include <psp2/kernel/clib.h>
 
 #include "neon_fft.hpp"
-#include <cstring>
 
 #define printf sceClibPrintf
+#define M_PI		3.14159265358979323846
 
 /**
  * Init fft structures
@@ -32,6 +33,7 @@ neon_fft_config *neon_fft_init(int nbsamples, int samplerate, int channel_mode)
 
     if (channel_mode != 1 && channel_mode != 2) {
         printf("Channel mode unsupported\n");
+        return nullptr;
     }
 
     cfg->channel_mode = channel_mode;
@@ -47,9 +49,9 @@ neon_fft_config *neon_fft_init(int nbsamples, int samplerate, int channel_mode)
     // Prepare the real-to-complex single precision floating point FFT configuration
     // structure for inputs of length `nbsamples`. (You need only generate this once for a
     // particular input size.)
-    cfg->cfg = ne10_fft_alloc_r2c_int16(nbsamples);
+    cfg->cfg = ne10_fft_alloc_r2c_int16(FFT_BUFFER_LENGTH);
 
-    cfg->src_buffer = (ne10_int16_t*)malloc(sizeof(ne10_int16_t) * nbsamples);
+    cfg->src_buffer = (ne10_int16_t*)malloc(sizeof(ne10_int16_t) * FFT_BUFFER_LENGTH);
     if (!cfg->src_buffer) {
         printf("Error allocating ne10 src_buffer\n");
         ne10_fft_destroy_r2c_int16(cfg->cfg);
@@ -57,7 +59,7 @@ neon_fft_config *neon_fft_init(int nbsamples, int samplerate, int channel_mode)
         return nullptr;
     }
 
-    cfg->dst_buffer = (ne10_fft_cpx_int16_t*)malloc(sizeof(ne10_fft_cpx_int16_t) * ((nbsamples / 2) + 1));
+    cfg->dst_buffer = (ne10_fft_cpx_int16_t*)malloc(sizeof(ne10_fft_cpx_int16_t) * ((FFT_BUFFER_LENGTH / 2) + 1));
     if (!cfg->dst_buffer) {
         printf("Error allocating ne10 dst_buffer\n");
         free(cfg->src_buffer);
@@ -66,9 +68,20 @@ neon_fft_config *neon_fft_init(int nbsamples, int samplerate, int channel_mode)
         return nullptr;
     }
 
-    cfg->visualizer_data = (float*)malloc(sizeof(float) * ((nbsamples / 2) + 1));
+    cfg->visualizer_data = (float*)malloc(sizeof(float) * ((FFT_BUFFER_LENGTH / 2) + 1));
     if (!cfg->visualizer_data) {
         printf("Error allocating visualizer_data\n");
+        free(cfg->dst_buffer);
+        free(cfg->src_buffer);
+        ne10_fft_destroy_r2c_int16(cfg->cfg);
+        free(cfg);
+        return nullptr;
+    }
+
+    cfg->saved_buffer = (ne10_int16_t*)malloc(sizeof(ne10_int16_t) * FFT_BUFFER_LENGTH);
+    if (!cfg->saved_buffer) {
+        printf("Error allocating saved_buffer\n");
+        free(cfg->visualizer_data);
         free(cfg->dst_buffer);
         free(cfg->src_buffer);
         ne10_fft_destroy_r2c_int16(cfg->cfg);
@@ -100,58 +113,58 @@ void neon_fft_free(neon_fft_config *cfg)
         free(cfg->visualizer_data);
     }
 
+    if (cfg->saved_buffer) {
+        free(cfg->saved_buffer);
+    }
+
     free(cfg);
 }
 
-int neon_fft_fill_src_buffer(neon_fft_config *cfg, int16_t *raw_data, int nbsamples)
+/**
+ * Add samples to the end of src_buffer
+ * 
+ * @param raw_data is PCM 16bit little-endian (2 bytes / sample in mono, 4 bytes / sample in stereo) and must be of size nbsamples
+ */
+void neon_fft_fill_buffer(neon_fft_config *cfg, int16_t *raw_data, int nbsamples)
 {
-    // raw_data is PCM 16bit little-endian (2 bytes / sample in mono, 4 bytes / sample in stereo) and must be of size nbsamples
-    // returns 1 if a new spectrum has been computed
-
-    // We need to fill the src_buffer until we have a full second of data, then we can compute spectrum data on it
-
-    int new_spectrum = 0;
-    if (nbsamples >= cfg->nbsamples) {
-        if (cfg->channel_mode == 1) { // mono, we can copy data directly to the buffer
-            memcpy(cfg->src_buffer, raw_data, cfg->nbsamples);
-        } else if (cfg->channel_mode == 2) { // stereo, we need to get only one sample every two because of left/right channels (we will only use left channel)
-            for (int i = 0; i < cfg->nbsamples / 8; i++) {
-                int16x8_t left_and_right = vld1q_s16(raw_data + i*8);
-                int16x4_t left_only = vget_low_s16(left_and_right);
-                vst1_s16(cfg->src_buffer + i*4, left_only);
-            }
-        }
-        new_spectrum = 1;
+    if (nbsamples == 0) {
+        printf("neon_fft_fill_src_buffer: nbsamples equals to zero\n");
+        return;
     }
 
-    return new_spectrum;
+    if (nbsamples > FFT_BUFFER_LENGTH) {
+        printf("neon_fft_fill_src_buffer: too much samples %i\n", nbsamples);
+        return;
+    }
+ 
+    // We copy samples from raw_data into end of src_buffer taking into account channel_mode (mono/stereo)
+    memmove(cfg->saved_buffer, cfg->saved_buffer + nbsamples, (FFT_BUFFER_LENGTH - nbsamples) * sizeof(int16_t));
+    if (cfg->channel_mode == 1) {
+        memcpy(cfg->saved_buffer + FFT_BUFFER_LENGTH - nbsamples, raw_data, nbsamples * sizeof(int16_t));
+    } else if (cfg->channel_mode == 2) {
+        // Only keep left channel for analysis
+        for (int i = 0; i < nbsamples; i++) {
+            int16_t data = (int16_t)(raw_data[i * 2]);
+            cfg->saved_buffer[FFT_BUFFER_LENGTH - nbsamples + i] = data;
+        }
+    }
 }
 
+/**
+ * Apply FFT on the last 1 second of data and create visualization inside visualizer_data
+ */
 int spectrum_analyser(neon_fft_config *cfg)
 {
     // Perform the FFT
-    ne10_fft_r2c_1d_int16(cfg->dst_buffer, cfg->src_buffer, cfg->cfg, 0);
-
-    // We have results of FFT inside dst_buffer and we will compute and store magnitude
-    // values inside this same buffer (just half less data)
-    // const int16_t *dst_buffer_ptr = (const int16_t*)cfg->dst_buffer;
+    memcpy(cfg->src_buffer, cfg->saved_buffer, FFT_BUFFER_LENGTH * sizeof(int16_t));
+    ne10_fft_r2c_1d_int16_neon(cfg->dst_buffer, cfg->src_buffer, cfg->cfg, 0);
 
     // Display the results
-    for (int i = 0; i <= cfg->nbsamples / 2; i++)
+    for (int i = 0; i <= FFT_BUFFER_LENGTH / 2; i++)
     {
         // Compute magnitude by doing (cfg->dst_buffer[i].r)^2 + (cfg->dst_buffer[i].i)^2
-        // real and imaginary elements are together in memory, we need to load everything and separate those values
-        // then we multiply with saturation and add those two numbers
-        // int16x8_t fft_result = vld1q_s16(dst_buffer_ptr);
-        // int16x4_t real_numbers = vget_low_s16(fft_result);
-        // int16x4_t imaginary_numbers = vget_high_s16(fft_result);
-        // real_numbers = vqdmulh_s16(real_numbers, real_numbers);
-        // imaginary_numbers = vqdmulh_s16(imaginary_numbers, imaginary_numbers);
-        // int16x4_t result = vhadd_s16(real_numbers, imaginary_numbers);
-        // vst1_s16(result_ptr, result);
-
-        cfg->visualizer_data[i] = (float)sqrt((float)(cfg->dst_buffer[i].r) * cfg->dst_buffer[i].r + (float)(cfg->dst_buffer[i].i) * cfg->dst_buffer[i].i) / 64.0;
         // We devide by 64 to reduce maximum value from 32768 down to 512 (the height of the screen)
+        cfg->visualizer_data[i] = sqrtf((float)(cfg->dst_buffer[i].r) * cfg->dst_buffer[i].r + (float)(cfg->dst_buffer[i].i) * cfg->dst_buffer[i].i) / 64.0;
     }
 
     return 0;
