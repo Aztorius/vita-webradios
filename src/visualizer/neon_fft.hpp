@@ -8,7 +8,7 @@ struct neon_fft_config {
     int nbsamples;
     int samplerate;
     int channel_mode;
-    int16_t *visualizer_data; // nbsamples / 2
+    float *visualizer_data; // (nbsamples / 2) + 1 values
 };
 
 neon_fft_config *neon_fft_init(int nbsamples, int samplerate, int channel_mode);

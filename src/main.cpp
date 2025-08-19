@@ -253,7 +253,7 @@ int audio_thread(unsigned int args, void *argp) {
 			}
 
 			sceKernelLockMutex(visualizer_mutex, 1, NULL);
-			player.visualizer_config = neon_fft_init(nsamples, samplerate, channels);
+			player.visualizer_config = neon_fft_init(128, samplerate, channels);
 			sceKernelUnlockMutex(visualizer_mutex, 1);
 	
 			port = sceAudioOutOpenPort(SCE_AUDIO_OUT_PORT_TYPE_BGM, nsamples, samplerate, channels_mode);
@@ -500,10 +500,10 @@ int main(void)
 
 			ImGui::Begin("Vita Webradio Visualizer", &show_app, flags);
 			sceKernelLockMutex(visualizer_mutex, 1, NULL);
-			if (player.state == PLAYER_STATE_PLAYING && player.visualizer_config && player.visualizer_config->dst_buffer) {
+			if (player.state == PLAYER_STATE_PLAYING && player.visualizer_config && player.visualizer_config->visualizer_data) {
+				spectrum_analyser(player.visualizer_config);
 				for (int i = 0; i < player.visualizer_config->nbsamples / 2; i++) {
-					float value = sqrt((float)(((int16_t*)player.visualizer_config->dst_buffer)[i])); // Reduce to max value 512
-					ImGui::GetWindowDrawList()->AddLine(ImVec2((float)i, 540.0), ImVec2((float)i, value), IM_COL32(0, 128, 0, 128));
+					ImGui::GetWindowDrawList()->AddRectFilled(ImVec2((float)i * (960.0 / (player.visualizer_config->nbsamples / 2)), 540.0), ImVec2((float)(i + 1) * (960.0 / (player.visualizer_config->nbsamples / 2)), 540.0 - player.visualizer_config->visualizer_data[i]), IM_COL32(0, 128, 0, 255));
 				}
 			}
 			sceKernelUnlockMutex(visualizer_mutex, 1);
