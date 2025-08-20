@@ -507,12 +507,16 @@ int main(void)
 			sceKernelLockMutex(visualizer_mutex, 1, NULL);
 			if (player.state == PLAYER_STATE_PLAYING && player.visualizer_config && player.visualizer_config->visualizer_data) {
 				spectrum_analyser(player.visualizer_config);
-				int bar_length = (FFT_BUFFER_LENGTH / 2) / 960;
-				for (int i = 0; i < 960; i++) {
-					// ImGui::GetWindowDrawList()->AddRectFilled(ImVec2((float)i, 540.0), ImVec2((float)(i+1), 540.0 - player.visualizer_config->visualizer_data[i]), IM_COL32(0, 128, 0, 255));
-					// ImGui::GetWindowDrawList()->AddLine(ImVec2((float)i * (960.0 / (FFT_BUFFER_LENGTH / 2)), 540.0 - player.visualizer_config->visualizer_data[i]), ImVec2((float)(i + 1) * (960.0 / (FFT_BUFFER_LENGTH / 2)), 540.0 - player.visualizer_config->visualizer_data[i]), IM_COL32(0, 128, 0, 255));
-					// ImGui::GetWindowDrawList()->AddLine(ImVec2((float)i*16, 270.0 - player.visualizer_config->src_buffer[i] / 128), ImVec2((float)(i+1)*16, 270.0 - player.visualizer_config->src_buffer[i+1] / 128), IM_COL32(0, 128, 0, 255));
-					ImGui::GetWindowDrawList()->AddLine(ImVec2((float)i, 540.0), ImVec2((float)i, 540.0 - (player.visualizer_config->saved_buffer[i] >> 6)), IM_COL32(0, 128, 0, 255));
+				int bar_length = 960 / 8;
+				for (int i = 0; i < 8; i++) {
+					// ImGui::GetWindowDrawList()->AddLine(
+					// 	ImVec2((float)(i) * bar_length, -player.visualizer_config->visualizer_data[i] * 5.0f),
+					// 	ImVec2((float)(i+1) * bar_length, -player.visualizer_config->visualizer_data[i] * 5.0f),
+					// 	IM_COL32(0, 128, 0, 255));
+					ImGui::GetWindowDrawList()->AddRectFilled(
+						ImVec2((float)i * bar_length, 540.0),
+						ImVec2((float)(i+1) * bar_length, -player.visualizer_config->visualizer_data[i] * 5.0f),
+						IM_COL32(0, 128, 0, 255));
 				}
 			}
 			sceKernelUnlockMutex(visualizer_mutex, 1);

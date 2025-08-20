@@ -1,13 +1,12 @@
 
 #include <NE10.h>
 
-#define FFT_BUFFER_LENGTH    65536
+#define FFT_BUFFER_LENGTH    2048
 
 struct neon_fft_config {
-    ne10_fft_r2c_cfg_int16_t cfg;
-    ne10_int16_t *saved_buffer;
+    ne10_fft_r2c_cfg_float32_t cfg;
     ne10_int16_t *src_buffer;
-    ne10_fft_cpx_int16_t *dst_buffer;
+    ne10_fft_cpx_float32_t *dst_buffer;
     int nbsamples;
     int samplerate;
     int channel_mode;
