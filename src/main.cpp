@@ -518,6 +518,10 @@ int main(void)
 						ImVec2((float)(i+1) * bar_length - 1, 540.0 - player.visualizer_config->visualizer_data[i] * 3.0f),
 						IM_COL32(0, 128, 0, 255));
 				}
+			} else if (player.state == PLAYER_STATE_WAITING) {
+				ImGui::Text("Standbye");
+			} else if (player.state == PLAYER_STATE_NEW) {
+				ImGui::Text("Connecting...");
 			}
 			sceKernelUnlockMutex(visualizer_mutex, 1);
 			ImGui::End();
