@@ -1,4 +1,4 @@
-# vita-webradio
+# vita-webradios
 
 A webradio player on PS Vita !
 
@@ -20,3 +20,5 @@ https://itch.io/jam/reihen-ps-vita-homebrew-contest
 
 - App icon and background by <a href="https://unsplash.com/fr/@naadirshah?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Naadir Shahul</a> on <a href="https://unsplash.com/fr/photos/radio-beige-et-noire-GpyLtafx7F0?utm_content=creditCopyText&utm_medium=referral&utm_source=unsplash">Unsplash</a>
 - Rinnegatamante for porting imgui to vita https://github.com/Rinnegatamante/imgui-vita and also for some of the mp3 code
+- libmpg123 https://www.mpg123.de/
+- Ne10 https://github.com/projectNe10/Ne10
