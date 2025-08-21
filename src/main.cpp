@@ -255,7 +255,7 @@ int audio_thread(unsigned int args, void *argp) {
 			}
 
 			if (sceKernelLockMutex(visualizer_mutex, 1, NULL) >= 0) {
-				player.visualizer_config = neon_fft_init(2048, samplerate, channels);
+				player.visualizer_config = neon_fft_init(nsamples, samplerate, channels, 16);
 				sceKernelUnlockMutex(visualizer_mutex, 1);
 			} else {
 				printf("visualizer_mutex lock error\n");
@@ -507,15 +507,15 @@ int main(void)
 			sceKernelLockMutex(visualizer_mutex, 1, NULL);
 			if (player.state == PLAYER_STATE_PLAYING && player.visualizer_config && player.visualizer_config->visualizer_data) {
 				spectrum_analyser(player.visualizer_config);
-				int bar_length = 960 / 8;
-				for (int i = 0; i < 8; i++) {
+				int bar_length = 960 / player.visualizer_config->bar_count;
+				for (int i = 0; i < player.visualizer_config->bar_count; i++) {
 					// ImGui::GetWindowDrawList()->AddLine(
 					// 	ImVec2((float)(i) * bar_length, -player.visualizer_config->visualizer_data[i] * 5.0f),
 					// 	ImVec2((float)(i+1) * bar_length, -player.visualizer_config->visualizer_data[i] * 5.0f),
 					// 	IM_COL32(0, 128, 0, 255));
 					ImGui::GetWindowDrawList()->AddRectFilled(
 						ImVec2((float)i * bar_length, 540.0),
-						ImVec2((float)(i+1) * bar_length, -player.visualizer_config->visualizer_data[i] * 5.0f),
+						ImVec2((float)(i+1) * bar_length - 1, 100 - player.visualizer_config->visualizer_data[i] * 8.0f),
 						IM_COL32(0, 128, 0, 255));
 				}
 			}

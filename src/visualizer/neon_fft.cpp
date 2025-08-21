@@ -14,12 +14,12 @@
 /**
  * Init fft structures
  * 
- * @param nbsamples corresponds to the number of samples that will be used by the fft
+ * @param nbsamples corresponds to the number of samples that will be analyzed by the fft
  * @param samplerate corresponds to the sample rate of audio data
  * @param channel_mode equals 1 if mono or 2 if stereo
  * 
  */
-neon_fft_config *neon_fft_init(int nbsamples, int samplerate, int channel_mode)
+neon_fft_config *neon_fft_init(int nbsamples, int samplerate, int channel_mode, int bar_count)
 {
     neon_fft_config *cfg = (neon_fft_config*)malloc(sizeof(neon_fft_config));
 
@@ -30,6 +30,7 @@ neon_fft_config *neon_fft_init(int nbsamples, int samplerate, int channel_mode)
 
     cfg->nbsamples = nbsamples;
     cfg->samplerate = samplerate;
+    cfg->bar_count = bar_count;
 
     if (channel_mode != 1 && channel_mode != 2) {
         printf("Channel mode unsupported\n");
@@ -49,9 +50,9 @@ neon_fft_config *neon_fft_init(int nbsamples, int samplerate, int channel_mode)
     // Prepare the real-to-complex single precision floating point FFT configuration
     // structure for inputs of length `nbsamples`. (You need only generate this once for a
     // particular input size.)
-    cfg->cfg = ne10_fft_alloc_r2c_float32(FFT_BUFFER_LENGTH);
+    cfg->cfg = ne10_fft_alloc_r2c_float32(nbsamples);
 
-    cfg->src_buffer = (ne10_int16_t*)malloc(sizeof(ne10_int16_t) * FFT_BUFFER_LENGTH);
+    cfg->src_buffer = (ne10_int16_t*)malloc(sizeof(ne10_int16_t) * nbsamples);
     if (!cfg->src_buffer) {
         printf("Error allocating ne10 src_buffer\n");
         ne10_fft_destroy_r2c_float32(cfg->cfg);
@@ -59,7 +60,7 @@ neon_fft_config *neon_fft_init(int nbsamples, int samplerate, int channel_mode)
         return nullptr;
     }
 
-    cfg->dst_buffer = (ne10_fft_cpx_float32_t*)malloc(sizeof(ne10_fft_cpx_float32_t) * ((FFT_BUFFER_LENGTH / 2) + 1));
+    cfg->dst_buffer = (ne10_fft_cpx_float32_t*)malloc(sizeof(ne10_fft_cpx_float32_t) * ((nbsamples / 2) + 1));
     if (!cfg->dst_buffer) {
         printf("Error allocating ne10 dst_buffer\n");
         free(cfg->src_buffer);
@@ -68,7 +69,7 @@ neon_fft_config *neon_fft_init(int nbsamples, int samplerate, int channel_mode)
         return nullptr;
     }
 
-    cfg->visualizer_data = (float*)malloc(sizeof(float) * 8);
+    cfg->visualizer_data = (float*)malloc(sizeof(float) * cfg->bar_count);
     if (!cfg->visualizer_data) {
         printf("Error allocating visualizer_data\n");
         free(cfg->dst_buffer);
@@ -117,7 +118,7 @@ void neon_fft_fill_buffer(neon_fft_config *cfg, int16_t *raw_data, int nbsamples
         return;
     }
 
-    if (nbsamples > FFT_BUFFER_LENGTH) {
+    if (nbsamples > cfg->nbsamples) {
         printf("neon_fft_fill_src_buffer: too much samples %i\n", nbsamples);
         return;
     }
@@ -134,9 +135,9 @@ void neon_fft_fill_buffer(neon_fft_config *cfg, int16_t *raw_data, int nbsamples
 
 // Convert a frequency into an FFT indices
 static inline int f_to_bin(neon_fft_config *cfg, float f) {
-    int idx = (int)roundf(f * FFT_BUFFER_LENGTH / cfg->samplerate);
+    int idx = (int)roundf(f * cfg->nbsamples / cfg->samplerate);
     if (idx < 0) idx = 0;
-    if (idx > FFT_BUFFER_LENGTH/2) idx = FFT_BUFFER_LENGTH/2;
+    if (idx > cfg->nbsamples/2) idx = cfg->nbsamples/2;
     return idx;
 }
 
@@ -146,18 +147,28 @@ static inline int f_to_bin(neon_fft_config *cfg, float f) {
 int spectrum_analyser(neon_fft_config *cfg)
 {
     // Apply Hann window on src_buffer
-    float32_t buffer[FFT_BUFFER_LENGTH] = {0};
-    for (int i = 0; i < FFT_BUFFER_LENGTH; i++) {
-        float hann_value = 0.5f * (1 - cosf(2*M_PI*i/(FFT_BUFFER_LENGTH - 1)));
-        buffer[i] = hann_value * (float32_t)cfg->src_buffer[i];
+    float *buffer = (float*)malloc(sizeof(float) * cfg->nbsamples);
+    if (!buffer) {
+        printf("spectrum_analyser: error allocating buffer");
+        return -1;
+    }
+
+    for (int i = 0; i < cfg->nbsamples; i++) {
+        float hann_value = 0.5f * (1 - cosf(2*M_PI*i/(cfg->nbsamples - 1)));
+        buffer[i] = hann_value * (float)cfg->src_buffer[i];
     }
 
     // Perform the FFT
     ne10_fft_r2c_1d_float32_neon(cfg->dst_buffer, buffer, cfg->cfg);
 
     // Compute power
-    float power[FFT_BUFFER_LENGTH/2+1];
-    for (int i = 0; i <= FFT_BUFFER_LENGTH / 2; i++)
+    float *power = (float*)malloc(sizeof(float) * (cfg->nbsamples / 2 + 1));
+    if (!power) {
+        printf("spectrum_analyser: error allocating power");
+        return -1;
+    }
+
+    for (int i = 0; i <= cfg->nbsamples / 2; i++)
     {
         // Compute magnitude by doing (cfg->dst_buffer[i].r)^2 + (cfg->dst_buffer[i].i)^2
         // We devide by 64 to reduce maximum value from 32768 down to 512 (the height of the screen)
@@ -167,8 +178,13 @@ int spectrum_analyser(neon_fft_config *cfg)
     }
 
     // Create groups for visualizer
-    int nbands = 8;
-    float edges[nbands+1];
+    int nbands = cfg->bar_count;
+    float *edges = (float*)malloc(sizeof(float) * (nbands+1));
+    if (!edges) {
+        printf("spectrum_analyser: error allocating edges");
+        return -1;
+    }
+
     float fmin = 20.0f;
     float fmax = cfg->samplerate / 2.0f;
     float log_min = log10f(fmin);
@@ -203,6 +219,10 @@ int spectrum_analyser(neon_fft_config *cfg)
     for (int b = 0; b < nbands; b++) {
         cfg->visualizer_data[b] -= max_db;
     }
+
+    free(edges);
+    free(power);
+    free(buffer);
 
     return 0;
 }
