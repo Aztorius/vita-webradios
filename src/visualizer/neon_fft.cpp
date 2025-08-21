@@ -194,7 +194,6 @@ int spectrum_analyser(neon_fft_config *cfg)
         edges[i] = powf(10.0f, log_min + frac * (log_max - log_min));
     }
 
-    float max_db = 0;
     for (int b = 0; b < nbands; b++) {
         // Compute lower and upper FFT indices of current band
         int i_lo = f_to_bin(cfg, edges[b]);
@@ -210,14 +209,6 @@ int spectrum_analyser(neon_fft_config *cfg)
 
         // Convert to dB
         cfg->visualizer_data[b] = 10.0f * log10f(cfg->visualizer_data[b] + 1e-12f);
-
-        if (cfg->visualizer_data[b] > max_db)
-            max_db = cfg->visualizer_data[b];
-    }
-
-    // Normalize compared to max band value
-    for (int b = 0; b < nbands; b++) {
-        cfg->visualizer_data[b] -= max_db;
     }
 
     free(edges);

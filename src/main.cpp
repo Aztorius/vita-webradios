@@ -515,7 +515,7 @@ int main(void)
 				for (int i = 0; i < player.visualizer_config->bar_count; i++) {
 					ImGui::GetWindowDrawList()->AddRectFilled(
 						ImVec2((float)i * bar_length, 540.0),
-						ImVec2((float)(i+1) * bar_length - 1, 100 - player.visualizer_config->visualizer_data[i] * 8.0f),
+						ImVec2((float)(i+1) * bar_length - 1, 540.0 - player.visualizer_config->visualizer_data[i] * 3.0f),
 						IM_COL32(0, 128, 0, 255));
 				}
 			}
@@ -530,8 +530,13 @@ int main(void)
 		if (ctrl_press.buttons & SCE_CTRL_START) {
 			done = true;
 		} else if (ctrl_press.buttons & SCE_CTRL_CIRCLE) {
-			show_main_widget = !show_main_widget;
-			show_visualization = !show_visualization;
+			if (!show_main_widget && !show_visualization) {
+				show_main_widget = false;
+				show_visualization = true;
+			} else {
+				show_main_widget = !show_main_widget;
+				show_visualization = !show_visualization;
+			}
 		} else if (ctrl_press.buttons & SCE_CTRL_SQUARE) {
 			player.state = PLAYER_STATE_WAITING;
 		} else if (ctrl_press.buttons & SCE_CTRL_TRIANGLE) {
