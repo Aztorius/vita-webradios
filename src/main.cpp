@@ -450,7 +450,8 @@ int main(void)
 	bool done = false;
 	static bool show_app = false;
 	bool show_main_widget = true;
-	static ImGuiWindowFlags flags = (ImGuiWindowFlags)(ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize);
+	bool show_visualization = false;
+	static ImGuiWindowFlags flags = (ImGuiWindowFlags)(ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar);
 	while (!done) {
 		ImGui_ImplVitaGL_NewFrame();
 
@@ -473,7 +474,7 @@ int main(void)
 				ImGui::Separator();
 
 				ImGui::Text("Add your webradios to ux0:/data/webradio/playlist.m3u");
-				ImGui::Text("(circle) show/hide user interface, (square) stop audio, (cross) play selected radio");
+				ImGui::Text("(circle) toggle visualization, (square) stop audio, (cross) play selected radio, (triangle) black screen, (R) next radio");
 
 				ImGui::Separator();
 				m3u_entry *drawEntry = m3ufile->first_entry;
@@ -493,13 +494,16 @@ int main(void)
 						player.url = current_entry->url;
 						player.title = current_entry->title;
 						player.state = PLAYER_STATE_NEW;
+						// Show visualization
+						show_main_widget = false;
+						show_visualization = true;
 					}
 					drawEntry = drawEntry->next;
 				}
 
 				ImGui::End();
 			}
-		} else {
+		} else if (show_visualization) {
 			ImGui::SetNextWindowPos(ImVec2(0, 0));
 	    	ImGui::SetNextWindowSize(ImVec2(960, 544));
 
@@ -509,10 +513,6 @@ int main(void)
 				spectrum_analyser(player.visualizer_config);
 				int bar_length = 960 / player.visualizer_config->bar_count;
 				for (int i = 0; i < player.visualizer_config->bar_count; i++) {
-					// ImGui::GetWindowDrawList()->AddLine(
-					// 	ImVec2((float)(i) * bar_length, -player.visualizer_config->visualizer_data[i] * 5.0f),
-					// 	ImVec2((float)(i+1) * bar_length, -player.visualizer_config->visualizer_data[i] * 5.0f),
-					// 	IM_COL32(0, 128, 0, 255));
 					ImGui::GetWindowDrawList()->AddRectFilled(
 						ImVec2((float)i * bar_length, 540.0),
 						ImVec2((float)(i+1) * bar_length - 1, 100 - player.visualizer_config->visualizer_data[i] * 8.0f),
@@ -531,8 +531,32 @@ int main(void)
 			done = true;
 		} else if (ctrl_press.buttons & SCE_CTRL_CIRCLE) {
 			show_main_widget = !show_main_widget;
+			show_visualization = !show_visualization;
 		} else if (ctrl_press.buttons & SCE_CTRL_SQUARE) {
 			player.state = PLAYER_STATE_WAITING;
+		} else if (ctrl_press.buttons & SCE_CTRL_TRIANGLE) {
+			if (!show_main_widget && !show_visualization) {
+				// Return to normal state
+				show_main_widget = true;
+				show_visualization = false;
+			} else {
+				show_main_widget = false;
+				show_visualization = false;
+			}
+		} else if (ctrl_press.buttons & SCE_CTRL_RTRIGGER) {
+			if (current_entry && current_entry->next) {
+				current_entry = current_entry->next;
+				printf("Playing %s %s\n", current_entry->title, current_entry->url);
+				player.url = current_entry->url;
+				player.title = current_entry->title;
+				player.state = PLAYER_STATE_NEW;
+			} else if (m3ufile->first_entry) {
+				current_entry = m3ufile->first_entry;
+				printf("Playing %s %s\n", current_entry->title, current_entry->url);
+				player.url = current_entry->url;
+				player.title = current_entry->title;
+				player.state = PLAYER_STATE_NEW;
+			}
 		}
 
 		// Rendering
