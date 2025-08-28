@@ -44,8 +44,10 @@ struct player {
 	enum player_state state;
 	int http_thread_id;
 	int player_thread_id;
-	const char *url;
-	const char *title;
+	const char *url; // Station URL
+	const char *title; // The station name
+	char *song_title; // Song title
+	bool new_song_title;
 	neon_fft_config *visualizer_config;
 };
 
@@ -53,10 +55,59 @@ static struct player player;
 static int audio_mutex;
 static int visualizer_mutex;
 
+
+char *icy_parse_stream_title(char *data, int size)
+{
+	// Find "StreamTitle='XXX'" in data and replace data value with "XXX\0"
+	if (size <= 13) {
+		sceClibPrintf("ICY Metadata to short to find stream title\n");
+		return NULL;
+	}
+
+	char *title = (char*)malloc(size);
+	if (!title) {
+		sceClibPrintf("Cannot allocate title\n");
+		return NULL;
+	}
+
+	memcpy(title, data, size);
+	title[size-1] = '\0';
+
+	char *result_left = strstr(title, "StreamTitle='");
+	if (!result_left) {
+		sceClibPrintf("Cannot find \"StreamTitle='\"\n");
+		free(title);
+		return NULL;
+	}
+
+	char *result_right = strstr(title + 13, "'");
+	if (!result_right) {
+		sceClibPrintf("Cannot find \"'\"\n");
+		free(title);
+		return NULL;
+	}
+
+	int title_size = result_right - (result_left + 13) + 1;
+	memmove(title, result_left + 13, title_size);
+	title[title_size-1] = '\0';
+	return title;
+}
+
 int play_webradio(const char *url)
 {
 	int res, tpl, conn, req;
-	SceUInt64 length = 0;
+	unsigned long long length = 0;
+
+	char *responseHeaders;
+	unsigned int responseHeaderSize = 0;
+
+	const char *headerFieldValue = NULL;
+	unsigned int headerFieldSize = 0;
+
+	int icyMetaint = 0;
+	bool icyMetadataEnabled = false;
+	int nextIcyMetadataIndex = 0;
+	int icyMetadataPartLength = 0;
 
 	SceUID fd;
 	void *recv_buffer = NULL;
@@ -85,19 +136,21 @@ int play_webradio(const char *url)
 		goto net_term;
 	}
 
-	res = sceHttpInit(0x100000);
-	if(res < 0){
-		sceClibPrintf("sceHttpInit failed (0x%X)\n", res);
-		goto netctl_term;
-	}
-
-	res = sceSslInit(0x100000);
+	res = sceSslInit(300 * 1024);
 	if(res < 0){
 		sceClibPrintf("sceSslInit failed (0x%X)\n", res);
 		goto http_term;
 	}
 
-	tpl = sceHttpCreateTemplate("PSVita", 2, 1);
+	res = sceHttpInit(40 * 1024);
+	if(res < 0){
+		sceClibPrintf("sceHttpInit failed (0x%X)\n", res);
+		goto netctl_term;
+	}
+
+	sceHttpsDisableOption(SCE_HTTPS_FLAG_SERVER_VERIFY);
+
+	tpl = sceHttpCreateTemplate("PSVita", SCE_HTTP_VERSION_1_1, SCE_TRUE);
 	if(tpl < 0){
 		sceClibPrintf("sceHttpCreateTemplate failed (0x%X)\n", tpl);
 		goto ssl_term;
@@ -105,14 +158,17 @@ int play_webradio(const char *url)
 
 	res = sceHttpAddRequestHeader(tpl, "Accept", "audio/mpeg", SCE_HTTP_HEADER_ADD);
 	sceClibPrintf("sceHttpAddRequestHeader=0x%X\n", res);
+	// Accept Icy-Metadata for getting song title
+	res = sceHttpAddRequestHeader(tpl, "Icy-Metadata", "1", SCE_HTTP_HEADER_ADD);
+	sceClibPrintf("sceHttpAddRequestHeader=0x%X\n", res);
 
-	conn = sceHttpCreateConnectionWithURL(tpl, url, 0);
+	conn = sceHttpCreateConnectionWithURL(tpl, url, SCE_TRUE);
 	if(conn < 0){
 		sceClibPrintf("sceHttpCreateConnectionWithURL failed (0x%X)\n", conn);
 		goto http_del_temp;
 	}
 
-	req = sceHttpCreateRequestWithURL(conn, 0, url, 0);
+	req = sceHttpCreateRequestWithURL(conn, SCE_HTTP_METHOD_GET, url, 0);
 	if(req < 0){
 		sceClibPrintf("sceHttpCreateRequestWithURL failed (0x%X)\n", req);
 		goto http_del_conn;
@@ -124,10 +180,23 @@ int play_webradio(const char *url)
 		goto http_del_req;
 	}
 
-	res = sceHttpGetResponseContentLength(req, &length);
-	sceClibPrintf("sceHttpGetResponseContentLength=%i\n", res);
+	res = sceHttpGetAllResponseHeaders(req, &responseHeaders, &responseHeaderSize);
+	sceClibPrintf("sceHttpGetAllResponseHeaders=%i\n", res);
+	sceClibPrintf("responseHeaderSize=%i\n", responseHeaderSize);
 
-	if (res < 0){
+	res = sceHttpParseResponseHeader(responseHeaders, responseHeaderSize, "icy-metaint", &headerFieldValue, &headerFieldSize);
+	sceClibPrintf("sceHttpParseResponseHeader=%i\n", res);
+	if (res >= 0) {
+		icyMetaint = strtol(headerFieldValue, NULL, 10);
+		icyMetadataEnabled = true;
+		nextIcyMetadataIndex = icyMetaint;
+		sceClibPrintf("ICY metadata enabled with icy-metaint=%i\n", icyMetaint);
+	}
+
+	res = sceHttpGetResponseContentLength(req, &length);
+	sceClibPrintf("sceHttpGetResponseContentLength=%i\n", length);
+
+	if (res < 0) {
 		recv_buffer = sce_paf_memalign(0x40, 0x10000);
 		if (recv_buffer == NULL) {
 			sceClibPrintf("sce_paf_memalign return to NULL\n");
@@ -141,6 +210,39 @@ int play_webradio(const char *url)
 			res = sceHttpReadData(req, recv_buffer, 0x10000);
 			if (res <= 0) {
 				break;
+			}
+
+			if (icyMetadataEnabled) {
+				// We need to remove those metadata before feeding it into the MP3 decoder
+				// Also we will progressively decode those metadata to get the song title
+				if (nextIcyMetadataIndex > res) {
+					// We do not have metadata here
+					nextIcyMetadataIndex -= res;
+				} else {
+					while (nextIcyMetadataIndex <= res) {
+						// Parse first byte to get metadata size for this chunk
+						icyMetadataPartLength = (int)(*((char*)recv_buffer + nextIcyMetadataIndex)) * 16;
+						if (icyMetadataPartLength > 0) {
+							// We have some metadata to parse !
+							sceClibPrintf("icyMetadataPartLength=%i\n", icyMetadataPartLength);
+							if (player.song_title) {
+								free(player.song_title);
+								player.song_title = NULL;
+							}
+							if (nextIcyMetadataIndex + 1 + icyMetadataPartLength <= res) {
+								player.song_title = icy_parse_stream_title((char*)recv_buffer + nextIcyMetadataIndex + 1, icyMetadataPartLength);
+								if (player.song_title) {
+									player.new_song_title = true;
+									sceClibPrintf("Title: %s\n", player.song_title);
+								}
+							}
+						}
+						memmove(recv_buffer + nextIcyMetadataIndex, recv_buffer + nextIcyMetadataIndex + icyMetadataPartLength + 1, res - (nextIcyMetadataIndex + icyMetadataPartLength + 1));
+						nextIcyMetadataIndex += icyMetaint;
+						res -= (icyMetadataPartLength + 1);
+					}
+					nextIcyMetadataIndex -= res;
+				}
 			}
 
 			if (sceKernelLockMutex(audio_mutex, 1, NULL) < 0) {
@@ -393,6 +495,7 @@ int main(void)
 	sysmodule_opt.result = &res;
 
 	sceSysmoduleLoadModuleInternalWithArg(SCE_SYSMODULE_INTERNAL_PAF, sizeof(paf_init_param), &paf_init_param, &sysmodule_opt);
+	sceSysmoduleLoadModule(SCE_SYSMODULE_NET);
 	sceSysmoduleLoadModule(SCE_SYSMODULE_HTTPS);
 
 	audio_mutex = sceKernelCreateMutex("audioMutex", 0, 0, NULL);
@@ -433,6 +536,8 @@ int main(void)
 	player.player_thread_id = thid;
 	player.state = PLAYER_STATE_WAITING;
 	player.visualizer_config = nullptr;
+	player.song_title = nullptr;
+	player.new_song_title = false;
 	sceKernelStartThread(player.player_thread_id, 0, 0);
 	sceKernelStartThread(player.http_thread_id, 0, 0);
 
@@ -451,6 +556,7 @@ int main(void)
 	static bool show_app = false;
 	bool show_main_widget = true;
 	bool show_visualization = false;
+	int title_show_start_time = 0;
 	static ImGuiWindowFlags flags = (ImGuiWindowFlags)(ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar);
 	while (!done) {
 		ImGui_ImplVitaGL_NewFrame();
@@ -463,7 +569,9 @@ int main(void)
 
 			if (ImGui::Begin("Vita Webradio", &show_app, flags))
 			{
-				if (player.url && player.title && player.state == PLAYER_STATE_PLAYING) {
+				if (player.song_title && player.title && player.state == PLAYER_STATE_PLAYING) {
+					ImGui::Text("Playing \"%s\" from %s", player.song_title, player.title);
+				} else if (player.url && player.title && player.state == PLAYER_STATE_PLAYING) {
 					ImGui::Text("Playing %s from %s", player.title, player.url);
 				} else if (player.url && player.title && player.state == PLAYER_STATE_NEW) {
 					ImGui::Text("Connecting to %s from %s", player.title, player.url);
@@ -517,6 +625,16 @@ int main(void)
 						ImVec2((float)i * bar_length, 540.0),
 						ImVec2((float)(i+1) * bar_length - 1, 540.0 - player.visualizer_config->visualizer_data[i] * 3.0f),
 						IM_COL32(0, 128, 0, 255));
+				}
+
+				if (player.new_song_title) {
+					title_show_start_time = ImGui::GetTime();
+					player.new_song_title = false;
+				}
+
+				if (player.song_title && ImGui::GetTime() - title_show_start_time < 5) {
+					// Show the song title for 5 seconds
+					ImGui::Text("%s", player.song_title);
 				}
 			} else if (player.state == PLAYER_STATE_WAITING) {
 				ImGui::Text("Standbye");
@@ -605,6 +723,7 @@ int main(void)
 	vglEnd();
 
 	sceSysmoduleUnloadModule(SCE_SYSMODULE_HTTPS);
+	sceSysmoduleUnloadModule(SCE_SYSMODULE_NET);
 	sceSysmoduleUnloadModuleInternal(SCE_SYSMODULE_INTERNAL_PAF);
 
 	m3u_file_free(m3ufile);
