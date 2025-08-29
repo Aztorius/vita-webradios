@@ -632,8 +632,8 @@ int main(void)
 					player.new_song_title = false;
 				}
 
-				if (player.song_title && ImGui::GetTime() - title_show_start_time < 5) {
-					// Show the song title for 5 seconds
+				if (player.song_title && ImGui::GetTime() - title_show_start_time < 10.0) {
+					// Show the song title for 10 seconds
 					ImGui::Text("%s", player.song_title);
 				}
 			} else if (player.state == PLAYER_STATE_WAITING) {
@@ -659,6 +659,7 @@ int main(void)
 				show_main_widget = !show_main_widget;
 				show_visualization = !show_visualization;
 			}
+			player.new_song_title = show_visualization; // Show title again
 		} else if (ctrl_press.buttons & SCE_CTRL_SQUARE) {
 			player.state = PLAYER_STATE_WAITING;
 		} else if (ctrl_press.buttons & SCE_CTRL_TRIANGLE) {
