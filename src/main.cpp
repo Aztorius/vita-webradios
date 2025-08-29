@@ -212,44 +212,67 @@ int play_webradio(const char *url)
 				break;
 			}
 
-			if (icyMetadataEnabled) {
-				// We need to remove those metadata before feeding it into the MP3 decoder
-				// Also we will progressively decode those metadata to get the song title
-				if (nextIcyMetadataIndex > res) {
-					// We do not have metadata here
-					nextIcyMetadataIndex -= res;
-				} else {
-					while (nextIcyMetadataIndex <= res) {
-						// Parse first byte to get metadata size for this chunk
-						icyMetadataPartLength = (int)(*((char*)recv_buffer + nextIcyMetadataIndex)) * 16;
-						if (icyMetadataPartLength > 0) {
-							// We have some metadata to parse !
-							sceClibPrintf("icyMetadataPartLength=%i\n", icyMetadataPartLength);
-							if (player.song_title) {
-								free(player.song_title);
-								player.song_title = NULL;
-							}
-							if (nextIcyMetadataIndex + 1 + icyMetadataPartLength <= res) {
-								player.song_title = icy_parse_stream_title((char*)recv_buffer + nextIcyMetadataIndex + 1, icyMetadataPartLength);
-								if (player.song_title) {
-									player.new_song_title = true;
-									sceClibPrintf("Title: %s\n", player.song_title);
-								}
-							}
-						}
-						memmove(recv_buffer + nextIcyMetadataIndex, recv_buffer + nextIcyMetadataIndex + icyMetadataPartLength + 1, res - (nextIcyMetadataIndex + icyMetadataPartLength + 1));
-						nextIcyMetadataIndex += icyMetaint;
-						res -= (icyMetadataPartLength + 1);
-					}
-					nextIcyMetadataIndex -= res;
-				}
-			}
-
 			if (sceKernelLockMutex(audio_mutex, 1, NULL) < 0) {
 				ret = 0;
 				printf("Cannot lock mutex in http thread, skipping audio\n");
 			} else {
-				ret = MP3_Feed(recv_buffer, res);
+				if (icyMetadataEnabled) {
+					// We need to ignore those metadata before feeding it into the MP3 decoder
+					// Also we will decode those metadata to get the song title
+					if (nextIcyMetadataIndex > res) {
+						// We do not have metadata here
+						nextIcyMetadataIndex -= res;
+						ret = MP3_Feed(recv_buffer, res);
+						if (ret) {
+							printf("MP3_Feed error: %i\n", ret);
+							break;
+						}
+					} else {
+						// Feed buffer before metadata
+						ret = MP3_Feed(recv_buffer, nextIcyMetadataIndex);
+						if (ret) {
+							printf("MP3_Feed error: %i\n", ret);
+							break;
+						}
+						while (nextIcyMetadataIndex < res) {
+							// Parse first byte to get metadata size for this chunk
+							icyMetadataPartLength = (int)(*((char*)recv_buffer + nextIcyMetadataIndex)) * 16;
+							if (icyMetadataPartLength > 0) {
+								// We have some metadata to parse !
+								sceClibPrintf("icyMetadataPartLength=%i\n", icyMetadataPartLength);
+								if (player.song_title) {
+									free(player.song_title);
+									player.song_title = NULL;
+								}
+								if (nextIcyMetadataIndex + 1 + icyMetadataPartLength <= res) {
+									player.song_title = icy_parse_stream_title((char*)recv_buffer + nextIcyMetadataIndex + 1, icyMetadataPartLength);
+									if (player.song_title) {
+										player.new_song_title = true;
+										sceClibPrintf("Title: %s\n", player.song_title);
+									}
+								}
+							}
+
+							if (nextIcyMetadataIndex + 1 + icyMetadataPartLength + icyMetaint <= res) {
+								// Feed next data
+								ret = MP3_Feed((char*)recv_buffer + nextIcyMetadataIndex + 1 + icyMetadataPartLength, icyMetaint);
+							} else {
+								// Feed until the end of buffer
+								ret = MP3_Feed((char*)recv_buffer + nextIcyMetadataIndex + 1 + icyMetadataPartLength, res - (nextIcyMetadataIndex + 1 + icyMetadataPartLength));
+							}
+							if (ret) {
+								printf("MP3_Feed error: %i\n", ret);
+								break;
+							}
+
+							nextIcyMetadataIndex += 1 + icyMetadataPartLength + icyMetaint;
+						}
+						nextIcyMetadataIndex -= res;
+					}
+				} else {
+					ret = MP3_Feed(recv_buffer, res);
+				}
+
 				sceKernelUnlockMutex(audio_mutex, 1);
 			}
 			if (ret) {
