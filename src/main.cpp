@@ -192,12 +192,15 @@ int play_webradio(const char *url)
 							break;
 						}
 					} else {
-						// Feed buffer before metadata
-						ret = MP3_Feed(recv_buffer, nextIcyMetadataIndex);
-						if (ret) {
-							printf("MP3_Feed error: %i\n", ret);
-							break;
+						if (nextIcyMetadataIndex > 0) {
+							// Feed buffer before metadata
+							ret = MP3_Feed(recv_buffer, nextIcyMetadataIndex);
+							if (ret) {
+								printf("MP3_Feed error: %i\n", ret);
+								break;
+							}
 						}
+
 						while (nextIcyMetadataIndex < res) {
 							// Parse first byte to get metadata size for this chunk
 							icyMetadataPartLength = (int)(*((char*)recv_buffer + nextIcyMetadataIndex)) * 16;
@@ -215,6 +218,9 @@ int play_webradio(const char *url)
 										sceClibPrintf("Title: %s\n", player.song_title);
 									}
 								}
+							} else if (icyMetadataPartLength < 0) {
+								// This is some weird value, exit
+								break;
 							}
 
 							if (nextIcyMetadataIndex + 1 + icyMetadataPartLength + icyMetaint <= res) {
