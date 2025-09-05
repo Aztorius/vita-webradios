@@ -21,6 +21,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
 add_executable(${PROJECT_NAME}
   src/main.cpp
+  src/utils.cpp
   src/audio/mp3.c
   src/m3u_parser/m3u.c
   src/gui/imgui_demo.cpp
