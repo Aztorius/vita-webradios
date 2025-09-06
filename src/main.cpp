@@ -414,7 +414,7 @@ int main(void)
 	ImGui_ImplVitaGL_Init();
 
 	// Setup style
-	ImGui::StyleColorsDark();
+	ImGui::StyleColorsClassic();
 
 	bool show_demo_window = true;
 	bool show_another_window = false;
@@ -517,9 +517,9 @@ int main(void)
  
 	// Main loop
 	bool done = false;
-	static bool show_app = false;
-	bool show_main_widget = true;
-	bool show_visualization = false;
+	static bool show_main_widget = true;
+	bool show_settings = false;
+	static bool show_visualization = false;
 	int title_show_start_time = 0;
 	static ImGuiWindowFlags flags = (ImGuiWindowFlags)(ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar);
 	while (!done) {
@@ -530,47 +530,58 @@ int main(void)
 			
     		ImGui::SetNextWindowPos(ImVec2(0, 0));
 	    	ImGui::SetNextWindowSize(ImVec2(960, 544));
-
-			if (ImGui::Begin("Vita Webradio", &show_app, flags))
+			
+			if (ImGui::Begin("Vita Webradio", &show_main_widget, flags))
 			{
-				if (player.song_title && player.title && player.state == PLAYER_STATE_PLAYING) {
-					ImGui::Text("Playing \"%s\" from %s", player.song_title, player.title);
-				} else if (player.url && player.title && player.state == PLAYER_STATE_PLAYING) {
-					ImGui::Text("Playing %s from %s", player.title, player.url);
-				} else if (player.url && player.title && player.state == PLAYER_STATE_NEW) {
-					ImGui::Text("Connecting to %s from %s", player.title, player.url);
-				} else {
-					ImGui::Text("Standby");
+				if (ImGui::Button("Webradios", ImVec2(0, 30))) {
+					show_settings = false;
+				}
+
+				ImGui::SameLine();
+				if (ImGui::Button("Settings", ImVec2(0, 30))) {
+					show_settings = true;
 				}
 
 				ImGui::Separator();
 
-				ImGui::Text("Add your webradios to ux0:/data/webradio/playlist.m3u");
-				ImGui::Text("(circle) toggle visualization, (square) stop audio, (cross) play selected radio, (triangle) black screen, (R) next radio");
-
-				ImGui::Separator();
-				m3u_entry *drawEntry = m3ufile->first_entry;
-				while (drawEntry) {
-					const char *button_text = NULL;
-					if (drawEntry->title) {
-						button_text = drawEntry->title;
-					} else if (drawEntry->url) {
-						button_text = drawEntry->url;
+				if (show_settings) {
+					ImGui::Text("Add your webradios to ux0:/data/webradio/playlist.m3u");
+					ImGui::Text("(circle) toggle visualization, (square) stop audio, (cross) play selected radio, (triangle) black screen, (R) next radio");
+				} else {
+					if (player.song_title && player.title && player.state == PLAYER_STATE_PLAYING) {
+						ImGui::Text("Playing \"%s\" from %s", player.song_title, player.title);
+					} else if (player.url && player.title && player.state == PLAYER_STATE_PLAYING) {
+						ImGui::Text("Playing %s from %s", player.title, player.url);
+					} else if (player.url && player.title && player.state == PLAYER_STATE_NEW) {
+						ImGui::Text("Connecting to %s from %s", player.title, player.url);
 					} else {
-						button_text = "Unknown";
+						ImGui::Text("Standby");
 					}
-
-					if (ImGui::Button(button_text, ImVec2(960, 30))) {
-						current_entry = drawEntry;
-						printf("Playing %s %s\n", current_entry->title, current_entry->url);
-						player.url = current_entry->url;
-						player.title = current_entry->title;
-						player.state = PLAYER_STATE_NEW;
-						// Show visualization
-						show_main_widget = false;
-						show_visualization = true;
+	
+					ImGui::Separator();
+					m3u_entry *drawEntry = m3ufile->first_entry;
+					while (drawEntry) {
+						const char *button_text = NULL;
+						if (drawEntry->title) {
+							button_text = drawEntry->title;
+						} else if (drawEntry->url) {
+							button_text = drawEntry->url;
+						} else {
+							button_text = "Unknown";
+						}
+	
+						if (ImGui::Button(button_text, ImVec2(960, 30))) {
+							current_entry = drawEntry;
+							printf("Playing %s %s\n", current_entry->title, current_entry->url);
+							player.url = current_entry->url;
+							player.title = current_entry->title;
+							player.state = PLAYER_STATE_NEW;
+							// Show visualization
+							show_main_widget = false;
+							show_visualization = true;
+						}
+						drawEntry = drawEntry->next;
 					}
-					drawEntry = drawEntry->next;
 				}
 
 				ImGui::End();
@@ -579,34 +590,35 @@ int main(void)
 			ImGui::SetNextWindowPos(ImVec2(0, 0));
 	    	ImGui::SetNextWindowSize(ImVec2(960, 544));
 
-			ImGui::Begin("Vita Webradio Visualizer", &show_app, flags);
-			sceKernelLockMutex(visualizer_mutex, 1, NULL);
-			if (player.state == PLAYER_STATE_PLAYING && player.visualizer_config && player.visualizer_config->visualizer_data) {
-				spectrum_analyser(player.visualizer_config);
-				int bar_length = 960 / player.visualizer_config->bar_count;
-				for (int i = 0; i < player.visualizer_config->bar_count; i++) {
-					ImGui::GetWindowDrawList()->AddRectFilled(
-						ImVec2((float)i * bar_length, 540.0),
-						ImVec2((float)(i+1) * bar_length - 1, 540.0 - player.visualizer_config->visualizer_data[i] * 3.0f),
-						IM_COL32(0, 128, 0, 255));
+			if (ImGui::Begin("Vita Webradio Visualizer", &show_visualization, flags)) {
+				sceKernelLockMutex(visualizer_mutex, 1, NULL);
+				if (player.state == PLAYER_STATE_PLAYING && player.visualizer_config && player.visualizer_config->visualizer_data) {
+					spectrum_analyser(player.visualizer_config);
+					int bar_length = 960 / player.visualizer_config->bar_count;
+					for (int i = 0; i < player.visualizer_config->bar_count; i++) {
+						ImGui::GetWindowDrawList()->AddRectFilled(
+							ImVec2((float)i * bar_length, 540.0),
+							ImVec2((float)(i+1) * bar_length - 1, 540.0 - (player.visualizer_config->visualizer_data[i] - 50.0) * 5.0f),
+							IM_COL32(0, 128, 0, 255));
+					}
+	
+					if (player.new_song_title) {
+						title_show_start_time = ImGui::GetTime();
+						player.new_song_title = false;
+					}
+	
+					if (player.song_title && ImGui::GetTime() - title_show_start_time < 10.0) {
+						// Show the song title for 10 seconds
+						ImGui::Text("%s", player.song_title);
+					}
+				} else if (player.state == PLAYER_STATE_WAITING) {
+					ImGui::Text("Standbye");
+				} else if (player.state == PLAYER_STATE_NEW) {
+					ImGui::Text("Connecting...");
 				}
-
-				if (player.new_song_title) {
-					title_show_start_time = ImGui::GetTime();
-					player.new_song_title = false;
-				}
-
-				if (player.song_title && ImGui::GetTime() - title_show_start_time < 10.0) {
-					// Show the song title for 10 seconds
-					ImGui::Text("%s", player.song_title);
-				}
-			} else if (player.state == PLAYER_STATE_WAITING) {
-				ImGui::Text("Standbye");
-			} else if (player.state == PLAYER_STATE_NEW) {
-				ImGui::Text("Connecting...");
+				sceKernelUnlockMutex(visualizer_mutex, 1);
+				ImGui::End();
 			}
-			sceKernelUnlockMutex(visualizer_mutex, 1);
-			ImGui::End();
 		}
 
 		ctrl_press = ctrl_peek;
