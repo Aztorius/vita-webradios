@@ -52,6 +52,7 @@ int m3u_parse(const char *filepath, struct m3u_file **m3ufile_p)
 
     char buffer[1024] = {0};
     char *title = NULL;
+    char *logo_url = NULL;
     while (fgets(buffer, 1024, fp)) {
         remove_trailing_crlf(buffer);
         int length = strlen(buffer);
@@ -67,13 +68,35 @@ int m3u_parse(const char *filepath, struct m3u_file **m3ufile_p)
                     strcpy(m3ufile->playlist_name, buffer + 8);
                 }
             } else if (str_starts_with(buffer, "#EXTINF:")) {
+                char *logo_str = strstr(buffer, " tvg-logo=\"");
+                if (logo_str) {
+                    // We have a logo URL
+                    logo_str += 11;
+                    char *logo_str_end = strchr(logo_str, '"');
+                    if (logo_str_end) {
+                        if (logo_url) {
+                            free(logo_url);
+                            logo_url = NULL;
+                        }
+                        
+                        logo_url = malloc(logo_str_end - logo_str + 1);
+                        if (logo_url) {
+                            strncpy(logo_url, logo_str, logo_str_end - logo_str);
+                        }
+                    }
+                }
+
                 int length_until_title = strcspn(buffer, ",") + 1;
                 if (length_until_title > 1 && length_until_title < length) {
-                    if (title)
+                    if (title) {
                         free(title);
+                        title = NULL;
+                    }
                     
                     title = malloc(length - length_until_title + 1);
-                    strncpy(title, buffer + length_until_title, length - length_until_title + 1);
+                    if (title) {
+                        strncpy(title, buffer + length_until_title, length - length_until_title + 1);
+                    }
                 }
             }
         } else {
@@ -92,13 +115,10 @@ int m3u_parse(const char *filepath, struct m3u_file **m3ufile_p)
                 return -1;
             }
             strncpy(entry->url, buffer, length + 1);
-            entry->logo_url = NULL;
-            entry->title = NULL;
-
-            if (title) {
-                entry->title = title;
-                title = NULL;
-            }
+            entry->logo_url = logo_url;
+            logo_url = NULL;
+            entry->title = title;
+            title = NULL;
 
             if (!m3ufile->first_entry) {
                 m3ufile->first_entry = entry;
