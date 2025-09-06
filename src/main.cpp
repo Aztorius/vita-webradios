@@ -161,7 +161,7 @@ int play_webradio(const char *url)
 	sceClibPrintf("sceHttpGetResponseContentLength=%i\n", length);
 
 	if (res < 0) {
-		recv_buffer = sce_paf_memalign(0x40, 0x10000);
+		recv_buffer = malloc(0x10000);
 		if (recv_buffer == NULL) {
 			sceClibPrintf("sce_paf_memalign return to NULL\n");
 			goto http_abort_req;
@@ -286,7 +286,7 @@ free_memblk:
 	sceKernelFreeMemBlock(memid);
 	memid = -1;
 
-	sce_paf_free(recv_buffer);
+	free(recv_buffer);
 	recv_buffer = NULL;
 
 	return 0;
@@ -443,22 +443,6 @@ int main(void)
 		}
 	}
 
-	int res;
-	SceUInt32 paf_init_param[6];
-	SceSysmoduleOpt sysmodule_opt;
-
-	paf_init_param[0] = 0x1100000;
-	paf_init_param[1] = 0;
-	paf_init_param[2] = 0;
-	paf_init_param[3] = 0;
-	paf_init_param[4] = 0x400;
-	paf_init_param[5] = 1;
-
-	res = ~0;
-	sysmodule_opt.flags  = 0;
-	sysmodule_opt.result = &res;
-
-	sceSysmoduleLoadModuleInternalWithArg(SCE_SYSMODULE_INTERNAL_PAF, sizeof(paf_init_param), &paf_init_param, &sysmodule_opt);
 	sceSysmoduleLoadModule(SCE_SYSMODULE_NET);
 	sceSysmoduleLoadModule(SCE_SYSMODULE_HTTPS);
 
@@ -701,7 +685,6 @@ int main(void)
 
 	sceSysmoduleUnloadModule(SCE_SYSMODULE_HTTPS);
 	sceSysmoduleUnloadModule(SCE_SYSMODULE_NET);
-	sceSysmoduleUnloadModuleInternal(SCE_SYSMODULE_INTERNAL_PAF);
 
 	m3u_file_free(m3ufile);
 
