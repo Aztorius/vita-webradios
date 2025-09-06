@@ -8,7 +8,9 @@ https://itch.io/jam/reihen-ps-vita-homebrew-contest
 ## Features
 
 - Play an MP3 HTTP webradio listed inside an M3U file at ux0:/data/webradio/playlist.m3u
-- GUI with webradio listing from M3U, spectrum visualizer, live song title (with ICY metadata)
+- GUI with webradio listing from M3U
+- Live Spectrum visualizer
+- Live song title parsing (with ICY metadata)
 
 ## Limitations
 
