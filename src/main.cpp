@@ -648,7 +648,7 @@ int main(void)
 								value * 1.5,
 								IM_COL32(255 - i * 2 * 255 / player.visualizer_config->bar_count, 200, 0, 255),
 								24,
-								8.0
+								4.0
 							);
 						}
 					}
