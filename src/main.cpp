@@ -27,7 +27,7 @@ extern "C" {
 #include "audio/mp3.h"
 #include "m3u_parser/m3u.h"
 
-int _newlib_heap_size_user = 64 * 1024 * 1024;
+int _newlib_heap_size_user = 54 * 1024 * 1024;
 }
 
 #define printf sceClibPrintf
