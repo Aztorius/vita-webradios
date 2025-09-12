@@ -39,6 +39,14 @@ const int sceUserMainThreadPriority	= 0x60;
 const SceSize sceUserMainThreadStackSize	= 0x1000;
 
 
+enum player_view {
+	PLAYER_VIEW_MENU,
+	PLAYER_VIEW_SETTINGS,
+	PLAYER_VIEW_VISUALIZER_BARS,
+	PLAYER_VIEW_VISUALIZER_CIRCLES,
+	PLAYER_VIEW_BLACKSCREEN,
+};
+
 enum player_state {
 	PLAYER_STATE_WAITING,
 	PLAYER_STATE_NEW,
@@ -48,6 +56,7 @@ enum player_state {
 
 struct player {
 	enum player_state state;
+	player_view view;
 	int http_thread_id;
 	int player_thread_id;
 	const char *url; // Station URL
@@ -496,6 +505,7 @@ int main(void)
 		return 1;
 	}
 
+	player.view = PLAYER_VIEW_MENU;
 	player.http_thread_id = thid;
 
 	thid = sceKernelCreateThread("audioThread", audio_thread, 0x10000100, 0x10000, 0, 0, NULL);
@@ -525,14 +535,13 @@ int main(void)
 	// Main loop
 	bool done = false;
 	static bool show_main_widget = true;
-	bool show_settings = false;
 	static bool show_visualization = false;
 	int title_show_start_time = 0;
 	static ImGuiWindowFlags flags = (ImGuiWindowFlags)(ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar);
 	while (!done) {
 		ImGui_ImplVitaGL_NewFrame();
 
-		if (show_main_widget) {
+		if (player.view == PLAYER_VIEW_MENU || player.view == PLAYER_VIEW_SETTINGS) {
 			ImGui::GetIO().MouseDrawCursor = false;
 			
     		ImGui::SetNextWindowPos(ImVec2(0, 0));
@@ -541,24 +550,27 @@ int main(void)
 			if (ImGui::Begin("Vita Webradio", &show_main_widget, flags))
 			{
 				if (ImGui::Button("Webradios", ImVec2(0, 30))) {
-					show_settings = false;
+					player.view = PLAYER_VIEW_MENU;
 				}
 
 				ImGui::SameLine();
-				if (ImGui::Button("Visualizer", ImVec2(0, 30))) {
-					show_settings = false;
-					show_main_widget = false;
-					show_visualization = true;
+				if (ImGui::Button("Bars", ImVec2(0, 30))) {
+					player.view = PLAYER_VIEW_VISUALIZER_BARS;
+				}
+
+				ImGui::SameLine();
+				if (ImGui::Button("Circles", ImVec2(0, 30))) {
+					player.view = PLAYER_VIEW_VISUALIZER_CIRCLES;
 				}
 
 				ImGui::SameLine();
 				if (ImGui::Button("About", ImVec2(0, 30))) {
-					show_settings = true;
+					player.view = PLAYER_VIEW_SETTINGS;
 				}
 
 				ImGui::Separator();
 
-				if (show_settings) {
+				if (player.view == PLAYER_VIEW_SETTINGS) {
 					ImGui::Text("Add your webradios to ux0:/data/webradio/playlist.m3u");
 					ImGui::Text("(circle) toggle visualization, (square) stop audio, (cross) play selected radio, (triangle) black screen, (R) next radio");
 				} else {
@@ -591,8 +603,7 @@ int main(void)
 							player.title = current_entry->title;
 							player.state = PLAYER_STATE_NEW;
 							// Show visualization
-							show_main_widget = false;
-							show_visualization = true;
+							player.view = PLAYER_VIEW_VISUALIZER_BARS;
 						}
 						drawEntry = drawEntry->next;
 					}
@@ -600,7 +611,7 @@ int main(void)
 
 				ImGui::End();
 			}
-		} else if (show_visualization) {
+		} else if (player.view == PLAYER_VIEW_VISUALIZER_BARS || player.view == PLAYER_VIEW_VISUALIZER_CIRCLES) {
 			ImGui::SetNextWindowPos(ImVec2(0, 0));
 	    	ImGui::SetNextWindowSize(ImVec2(960, 544));
 
@@ -608,20 +619,38 @@ int main(void)
 				sceKernelLockMutex(visualizer_mutex, 1, NULL);
 				if (player.state == PLAYER_STATE_PLAYING && player.visualizer_config && player.visualizer_config->visualizer_data) {
 					spectrum_analyser(player.visualizer_config);
-					int bar_length = 960 / player.visualizer_config->bar_count;
-					for (int i = 0; i < player.visualizer_config->bar_count; i++) {
-						float y_upper = 540.0 - (player.visualizer_config->visualizer_data[i] - 60.0) * 5.0f;
-						if (y_upper <= 0.0 || y_upper > 544.0) {
-							continue;
-						}
 
-						ImGui::GetWindowDrawList()->AddRectFilledMultiColor(
-							ImVec2((float)(i+1) * bar_length - 1, y_upper),
-							ImVec2((float)i * bar_length, 540.0),
-							IM_COL32(255 - (int)(y_upper / 3.0), 200, 0, 255),
-							IM_COL32(255 - (int)(y_upper / 3.0), 200, 0, 255),
-							IM_COL32(0, 200, 0, 255),
-							IM_COL32(0, 200, 0, 255));
+					if (player.view == PLAYER_VIEW_VISUALIZER_BARS) {
+						int bar_length = 960 / player.visualizer_config->bar_count;
+						for (int i = 0; i < player.visualizer_config->bar_count; i++) {
+							float y_upper = 540.0 - (player.visualizer_config->visualizer_data[i] - 60.0) * 5.0f;
+							if (y_upper <= 0.0 || y_upper > 544.0) {
+								continue;
+							}
+
+							ImGui::GetWindowDrawList()->AddRectFilledMultiColor(
+								ImVec2((float)(i+1) * bar_length - 1, y_upper),
+								ImVec2((float)i * bar_length, 540.0),
+								IM_COL32(255 - (int)(y_upper / 3.0), 200, 0, 255),
+								IM_COL32(255 - (int)(y_upper / 3.0), 200, 0, 255),
+								IM_COL32(0, 200, 0, 255),
+								IM_COL32(0, 200, 0, 255));
+						}
+					} else { // PLAYER_VIEW_VISUALIZER_CIRCLES
+						for (int i = 0; i < player.visualizer_config->bar_count / 2; i++) {
+							float value = (player.visualizer_config->visualizer_data[i*2] + player.visualizer_config->visualizer_data[i*2+1]) / 2.0;
+							if (value < 0.0) {
+								value = 0.0;
+							}
+
+							ImGui::GetWindowDrawList()->AddCircle(
+								ImVec2(960.0 / 2.0, 544.0 / 2.0),
+								value * 1.5,
+								IM_COL32(255 - i * 2 * 255 / player.visualizer_config->bar_count, 200, 0, 255),
+								24,
+								8.0
+							);
+						}
 					}
 	
 					if (player.new_song_title) {
@@ -650,24 +679,30 @@ int main(void)
 		if (ctrl_press.buttons & SCE_CTRL_START) {
 			done = true;
 		} else if (ctrl_press.buttons & SCE_CTRL_CIRCLE) {
-			if (!show_main_widget && !show_visualization) {
-				show_main_widget = false;
-				show_visualization = true;
-			} else {
-				show_main_widget = !show_main_widget;
-				show_visualization = !show_visualization;
+			switch (player.view)
+			{
+			case PLAYER_VIEW_VISUALIZER_CIRCLES:
+				player.view = PLAYER_VIEW_MENU;
+				break;
+			case PLAYER_VIEW_VISUALIZER_BARS:
+				player.view = PLAYER_VIEW_VISUALIZER_CIRCLES;
+				break;
+			default:
+				player.view = PLAYER_VIEW_VISUALIZER_BARS;
+				break;
 			}
-			player.new_song_title = show_visualization; // Show title again
+			player.new_song_title = true; // Show title again
 		} else if (ctrl_press.buttons & SCE_CTRL_SQUARE) {
 			player.state = PLAYER_STATE_WAITING;
 		} else if (ctrl_press.buttons & SCE_CTRL_TRIANGLE) {
-			if (!show_main_widget && !show_visualization) {
-				// Return to normal state
-				show_main_widget = true;
-				show_visualization = false;
-			} else {
-				show_main_widget = false;
-				show_visualization = false;
+			switch (player.view)
+			{
+			case PLAYER_VIEW_BLACKSCREEN:
+				player.view = PLAYER_VIEW_MENU;
+				break;
+			default:
+				player.view = PLAYER_VIEW_BLACKSCREEN;
+				break;
 			}
 		} else if (ctrl_press.buttons & SCE_CTRL_RTRIGGER) {
 			if (current_entry && current_entry->next) {
