@@ -522,7 +522,14 @@ int main(void)
 				}
 
 				ImGui::SameLine();
-				if (ImGui::Button("Settings", ImVec2(0, 30))) {
+				if (ImGui::Button("Visualizer", ImVec2(0, 30))) {
+					show_settings = false;
+					show_main_widget = false;
+					show_visualization = true;
+				}
+
+				ImGui::SameLine();
+				if (ImGui::Button("About", ImVec2(0, 30))) {
 					show_settings = true;
 				}
 
