@@ -607,7 +607,7 @@ int main(void)
 					for (int i = 0; i < player.visualizer_config->bar_count; i++) {
 						ImGui::GetWindowDrawList()->AddRectFilled(
 							ImVec2((float)i * bar_length, 540.0),
-							ImVec2((float)(i+1) * bar_length - 1, 540.0 - (player.visualizer_config->visualizer_data[i] - 50.0) * 5.0f),
+							ImVec2((float)(i+1) * bar_length - 1, 540.0 - (player.visualizer_config->visualizer_data[i] - 60.0) * 5.0f),
 							IM_COL32(0, 128, 0, 255));
 					}
 	
