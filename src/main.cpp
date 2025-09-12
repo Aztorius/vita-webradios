@@ -373,8 +373,11 @@ int audio_thread(unsigned int args, void *argp) {
 			printf("Playing %s %s sample_rate %i channels %i\n", player.title, player.url, samplerate, channels);
 			sceAudioOutSetConfig(port, -1, -1, channels_mode);
 			SceAudioOutChannelFlag flags = (SceAudioOutChannelFlag)(SCE_AUDIO_VOLUME_FLAG_L_CH & SCE_AUDIO_VOLUME_FLAG_R_CH);
+			int vol = SCE_AUDIO_VOLUME_0DB;
 			int volumes[2] = {vol, vol};
-			sceAudioOutSetVolume(port, flags, volumes);
+			if (sceAudioOutSetVolume(port, flags, volumes)) {
+				printf("Error setting volume\n");
+			}
 		}
 
 		sceKernelUnlockMutex(audio_mutex, 1);
