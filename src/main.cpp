@@ -27,12 +27,17 @@ extern "C" {
 #include "audio/mp3.h"
 #include "m3u_parser/m3u.h"
 
-int _newlib_heap_size_user = 54 * 1024 * 1024;
+int _newlib_heap_size_user = 64 * 1024 * 1024;
 }
 
 #define printf sceClibPrintf
 
 #define BUFFER_LENGTH 8192
+
+const char sceUserMainThreadName[]	= "vita_webradios";
+const int sceUserMainThreadPriority	= 0x60;
+const SceSize sceUserMainThreadStackSize	= 0x1000;
+
 
 enum player_state {
 	PLAYER_STATE_WAITING,
@@ -77,7 +82,7 @@ int play_webradio(const char *url)
 	void *recv_buffer = NULL;
 
 	SceNetInitParam net_init_param;
-	net_init_param.size = 0x100000;
+	net_init_param.size = 16 * 1024;
 	net_init_param.flags = 0;
 
 	SceUID memid = sceKernelAllocMemBlock("SceNetMemory", 0x0C20D060, net_init_param.size, NULL);
@@ -424,7 +429,7 @@ int http_thread(unsigned int args, void *argp) {
 
 int main(void)
 {
-	vglInitExtended(0, 960, 544, 0x1800000, SCE_GXM_MULTISAMPLE_4X);
+	vglInitExtended(0, 960, 544, 0x1000000, SCE_GXM_MULTISAMPLE_4X);
 
 	// Setup ImGui binding
 	ImGui::CreateContext();
