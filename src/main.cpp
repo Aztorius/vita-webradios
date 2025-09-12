@@ -605,10 +605,18 @@ int main(void)
 					spectrum_analyser(player.visualizer_config);
 					int bar_length = 960 / player.visualizer_config->bar_count;
 					for (int i = 0; i < player.visualizer_config->bar_count; i++) {
-						ImGui::GetWindowDrawList()->AddRectFilled(
+						float y_upper = 540.0 - (player.visualizer_config->visualizer_data[i] - 60.0) * 5.0f;
+						if (y_upper <= 0.0) {
+							continue;
+						}
+
+						ImGui::GetWindowDrawList()->AddRectFilledMultiColor(
 							ImVec2((float)i * bar_length, 540.0),
-							ImVec2((float)(i+1) * bar_length - 1, 540.0 - (player.visualizer_config->visualizer_data[i] - 60.0) * 5.0f),
-							IM_COL32(0, 128, 0, 255));
+							ImVec2((float)(i+1) * bar_length - 1, y_upper),
+							IM_COL32(0, 200, 0, 255),
+							IM_COL32(0, 200, 0, 255),
+							IM_COL32(255 - (int)(y_upper / 2.0), 200, 0, 255),
+							IM_COL32(255 - (int)(y_upper / 2.0), 200, 0, 255));
 					}
 	
 					if (player.new_song_title) {
