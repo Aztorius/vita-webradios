@@ -332,11 +332,24 @@ int audio_thread(unsigned int args, void *argp) {
 				sceKernelUnlockMutex(visualizer_mutex, 1);
 			}
 	
-			int vol = SCE_AUDIO_VOLUME_0DB;
 			channels = MP3_GetChannels();
 			int samplerate = MP3_GetSampleRate();
 			int nsamples = 0;
-			// int compatible_freqs[] = {8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000};
+			int compatible_freqs[] = {8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000};
+			int samplerate_is_compatible = false;
+
+			for (int i = 0; i < sizeof(compatible_freqs); i++) {
+				if (samplerate == compatible_freqs[i]) {
+					samplerate_is_compatible = true;
+					break;
+				}
+			}
+
+			if (!samplerate_is_compatible) {
+				printf("Samplerate %i is not compatible\n", samplerate);
+				goto audio_thread_end;
+			}
+
 			SceAudioOutMode channels_mode = SCE_AUDIO_OUT_MODE_STEREO;
 			if (channels == 1) {
 				channels_mode = SCE_AUDIO_OUT_MODE_MONO;
