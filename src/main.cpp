@@ -379,7 +379,9 @@ int audio_thread(unsigned int args, void *argp) {
 
 		sceKernelUnlockMutex(audio_mutex, 1);
 		
-		if (outsize > 0) {
+		if (outsize > 0 && ret != -11) {
+			// Only play music if there is some music data
+			// Also ignore the first time we receive data (ret==-11) to prevent some bad noise
 			if (sceKernelLockMutex(visualizer_mutex, 1, NULL) >= 0) {
 				neon_fft_fill_buffer(player.visualizer_config, (int16_t*)outbuffer, outsize / (2 * channels)); // 2 bytes per sample
 				sceKernelUnlockMutex(visualizer_mutex, 1);
