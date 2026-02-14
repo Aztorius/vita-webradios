@@ -54,6 +54,11 @@ enum player_state {
 	PLAYER_STATE_STOPPING,
 };
 
+enum audio_format {
+	AUDIO_FORMAT_MP3,
+	AUDIO_FORMAT_AAC,
+};
+
 struct player {
 	enum player_state state;
 	player_view view;
@@ -63,6 +68,7 @@ struct player {
 	const char *title; // The station name
 	char *song_title; // Song title
 	bool new_song_title;
+	audio_format audio_format;
 	neon_fft_config *visualizer_config;
 };
 
@@ -86,9 +92,6 @@ int play_webradio(const char *url)
 	bool icyMetadataEnabled = false;
 	int nextIcyMetadataIndex = 0;
 	int icyMetadataPartLength = 0;
-
-	bool is_aac = false;
-	bool is_mp3 = true;
 
 	SceUID fd;
 	void *recv_buffer = NULL;
@@ -179,12 +182,16 @@ int play_webradio(const char *url)
 	if (res >= 0) {
 		sceClibPrintf("Content-Type: %s\n", headerFieldValue);
 		if (headerFieldValue == "audio/mpeg") {
-			is_aac = false;
-			is_mp3 = true;
+			player.audio_format = AUDIO_FORMAT_MP3;
 		} else if (headerFieldValue == "audio/aacp") {
-			is_aac = true;
-			is_mp3 = false;
+			player.audio_format = AUDIO_FORMAT_AAC;
+		} else {
+			// Use MP3 by default
+			player.audio_format = AUDIO_FORMAT_MP3;
 		}
+	} else {
+		// Use MP3 by default
+		player.audio_format = AUDIO_FORMAT_MP3;
 	}
 
 	res = sceHttpGetResponseContentLength(req, &length);
