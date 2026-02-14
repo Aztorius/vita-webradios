@@ -756,7 +756,7 @@ int main(void)
 
 	// Cleanup
 	ImGui::DestroyContext();
-	vglEnd();
+	glEnd();
 
 	sceSysmoduleUnloadModule(SCE_SYSMODULE_HTTPS);
 	sceSysmoduleUnloadModule(SCE_SYSMODULE_NET);
