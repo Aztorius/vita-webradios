@@ -676,7 +676,19 @@ int main(void)
 		sceCtrlPeekBufferPositive(0, &ctrl_peek, 1);
 		ctrl_press.buttons = ctrl_peek.buttons & ~ctrl_press.buttons;
 
-		if (ctrl_press.buttons & SCE_CTRL_START) {
+		if (ctrl_press.buttons & SCE_CTRL_TRIANGLE) {
+			switch (player.view)
+			{
+			case PLAYER_VIEW_BLACKSCREEN:
+				player.view = PLAYER_VIEW_MENU;
+				break;
+			default:
+				player.view = PLAYER_VIEW_BLACKSCREEN;
+				break;
+			}
+		} else if (player.view == PLAYER_VIEW_BLACKSCREEN) {
+			// Do nothing, buttons are disabled in this view
+		} else if (ctrl_press.buttons & SCE_CTRL_START) {
 			done = true;
 		} else if (ctrl_press.buttons & SCE_CTRL_CIRCLE) {
 			switch (player.view)
@@ -694,16 +706,6 @@ int main(void)
 			player.new_song_title = true; // Show title again
 		} else if (ctrl_press.buttons & SCE_CTRL_SQUARE) {
 			player.state = PLAYER_STATE_WAITING;
-		} else if (ctrl_press.buttons & SCE_CTRL_TRIANGLE) {
-			switch (player.view)
-			{
-			case PLAYER_VIEW_BLACKSCREEN:
-				player.view = PLAYER_VIEW_MENU;
-				break;
-			default:
-				player.view = PLAYER_VIEW_BLACKSCREEN;
-				break;
-			}
 		} else if (ctrl_press.buttons & SCE_CTRL_RTRIGGER) {
 			if (current_entry && current_entry->next) {
 				current_entry = current_entry->next;
