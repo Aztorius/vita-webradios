@@ -87,6 +87,9 @@ int play_webradio(const char *url)
 	int nextIcyMetadataIndex = 0;
 	int icyMetadataPartLength = 0;
 
+	bool is_aac = false;
+	bool is_mp3 = true;
+
 	SceUID fd;
 	void *recv_buffer = NULL;
 
@@ -169,6 +172,19 @@ int play_webradio(const char *url)
 		icyMetadataEnabled = true;
 		nextIcyMetadataIndex = icyMetaint;
 		sceClibPrintf("ICY metadata enabled with icy-metaint=%i\n", icyMetaint);
+	}
+
+	res = sceHttpParseResponseHeader(responseHeaders, responseHeaderSize, "Content-Type", &headerFieldValue, &headerFieldSize);
+	sceClibPrintf("sceHttpParseResponseHeader=%i\n", res);
+	if (res >= 0) {
+		sceClibPrintf("Content-Type: %s\n", headerFieldValue);
+		if (headerFieldValue == "audio/mpeg") {
+			is_aac = false;
+			is_mp3 = true;
+		} else if (headerFieldValue == "audio/aacp") {
+			is_aac = true;
+			is_mp3 = false;
+		}
 	}
 
 	res = sceHttpGetResponseContentLength(req, &length);
