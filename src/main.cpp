@@ -65,18 +65,27 @@ enum audio_format {
 struct player {
 	enum player_state state;
 	player_view view;
+
 	int http_thread_id;
 	int player_thread_id;
+
 	const char *url; // Station URL
 	const char *title; // The station name
 	char *song_title; // Song title
 	bool new_song_title;
+
 	audio_format audio_type;
+	int samplerate;
+	int nb_channels;
+	int nb_samples;
+
 	bool icy_metadata_enabled;
 	int icy_metaint;
 	int icy_count;
 	int icy_part_length;
+
 	neon_fft_config *visualizer_config;
+	bool visualizer_rebuild;
 };
 
 static struct player player;
@@ -341,6 +350,8 @@ int audio_thread(unsigned int args, void *argp)
 				break;
 			}
 
+			player.samplerate = samplerate;
+
 			SceAudioOutMode channels_mode = SCE_AUDIO_OUT_MODE_STEREO;
 			if (channels == 1) {
 				channels_mode = SCE_AUDIO_OUT_MODE_MONO;
@@ -352,6 +363,10 @@ int audio_thread(unsigned int args, void *argp)
 				printf("Wrong number of channel in stream !");
 				break;
 			}
+
+			player.nb_channels = channels;
+			player.nb_samples = nsamples;
+			player.visualizer_rebuild = true;
 
 			port = sceAudioOutOpenPort(SCE_AUDIO_OUT_PORT_TYPE_BGM, nsamples, samplerate, channels_mode);
 			printf("Playing %s %s sample_rate %i channels %i\n", player.title, player.url, samplerate, channels);
@@ -369,6 +384,12 @@ int audio_thread(unsigned int args, void *argp)
 		if (outsize > 0 && ret != -11) {
 			// Only play music if there is some music data
 			// Also ignore the first time we receive data (ret==-11) to prevent some bad noise
+			sceKernelLockMutex(visualizer_mutex, 1, NULL);
+
+			neon_fft_fill_buffer(player.visualizer_config, (int16_t*)outbuffer, outsize / (2 * channels));
+
+			sceKernelUnlockMutex(visualizer_mutex, 1);
+
 			sceAudioOutOutput(port, outbuffer);
 		} else {
 			sceKernelDelayThread(100000); // 100ms delay if nothing to play
@@ -398,6 +419,15 @@ void parse_icy_metadata()
         if (end) {
             *end = 0;
             printf("🎵 Now Playing: %s\n", title);
+			if (player.song_title) {
+				free(player.song_title);
+				player.song_title = nullptr;
+			}
+
+			int title_size = end - title + 1;
+			player.song_title = (char*)malloc(end - title + 1);
+			memcpy(player.song_title, title, title_size);
+			player.new_song_title = true;
         }
     }
 
@@ -518,6 +548,7 @@ int main(void)
 	player.player_thread_id = thid;
 	player.state = PLAYER_STATE_WAITING;
 	player.visualizer_config = nullptr;
+	player.visualizer_rebuild = false;
 	player.song_title = nullptr;
 	player.new_song_title = false;
 	sceKernelStartThread(player.player_thread_id, 0, 0);
@@ -541,6 +572,20 @@ int main(void)
 	static ImGuiWindowFlags flags = (ImGuiWindowFlags)(ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar);
 	while (!done) {
 		ImGui_ImplVitaGL_NewFrame();
+
+		parse_icy_metadata();
+
+		if (player.visualizer_rebuild) {
+			sceKernelLockMutex(visualizer_mutex, 1, NULL);
+	
+			if (player.visualizer_config) {
+				neon_fft_free(player.visualizer_config);
+				player.visualizer_config = nullptr;
+			}
+
+			player.visualizer_config = neon_fft_init(player.nb_samples, player.samplerate, player.nb_channels, 16);
+			sceKernelUnlockMutex(visualizer_mutex, 1);
+		}
 
 		if (player.view == PLAYER_VIEW_MENU || player.view == PLAYER_VIEW_SETTINGS) {
 			ImGui::GetIO().MouseDrawCursor = false;
