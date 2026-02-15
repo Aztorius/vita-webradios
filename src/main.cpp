@@ -585,6 +585,8 @@ int main(void)
 
 			player.visualizer_config = neon_fft_init(player.nb_samples, player.samplerate, player.nb_channels, 16);
 			sceKernelUnlockMutex(visualizer_mutex, 1);
+
+			player.visualizer_rebuild = false;
 		}
 
 		if (player.view == PLAYER_VIEW_MENU || player.view == PLAYER_VIEW_SETTINGS) {
