@@ -137,11 +137,11 @@ size_t stream_callback(void *ptr, size_t size, size_t nmemb, void *userdata)
 		}
 
 		sceKernelUnlockMutex(audio_mutex, 1);
-	} else if (player.icy_metaint > 0) {
+	} else {
 		// Audio + ICY Metadata
 		while (i < bytes) {
 			// Audio
-			if (player.icy_count > 0) {
+			if (player.icy_metaint > 0 && player.icy_count > 0) {
 				sceKernelLockMutex(audio_mutex, 1, NULL);
 
 				while (i < bytes && player.icy_count > 0) {
@@ -159,9 +159,8 @@ size_t stream_callback(void *ptr, size_t size, size_t nmemb, void *userdata)
 			}
 	
 			// Metadata
-			if (i < bytes && player.icy_count == 0) {
-	
-				int meta_len = data[i] * 16;
+			if (i < bytes && player.icy_count == 0 && player.icy_metaint > 0) {
+				int meta_len = int(data[i]) * 16;
 				i++;
 	
 				if (meta_len > 0 && meta_len < ICY_METADATA_MAX) {
@@ -194,9 +193,7 @@ size_t header_callback(char *buffer, size_t size, size_t nitems, void *userdata)
 		player.icy_metadata_enabled = true;
 		player.icy_metaint = metaint;
 		player.icy_count = metaint;
-    } else {
-		player.icy_metadata_enabled = false;
-	}
+    }
 
     if (!strncasecmp(buffer, "content-type:", 13)) {
 		char content_type[30];
@@ -229,7 +226,7 @@ int network_thread(unsigned int args, void *argp)
 	// Headers
 	struct curl_slist *headers = NULL;
 	headers = curl_slist_append(headers, "User-Agent: VitaWebradios/2.0");
-	// headers = curl_slist_append(headers, "Icy-MetaData: 1");
+	headers = curl_slist_append(headers, "Icy-MetaData: 1");
 	headers = curl_slist_append(headers, "Accept: */*");
 	headers = curl_slist_append(headers, "Connection: keep-alive");
 	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
@@ -352,6 +349,8 @@ int audio_thread(unsigned int args, void *argp)
 			// Only play music if there is some music data
 			// Also ignore the first time we receive data (ret==-11) to prevent some bad noise
 			sceAudioOutOutput(port, outbuffer);
+		} else {
+			sceKernelDelayThread(100000); // 100ms delay if nothing to play
 		}
 
         sceKernelDelayThread(1000);
