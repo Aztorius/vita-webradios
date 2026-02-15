@@ -81,7 +81,7 @@ struct player {
 
 static struct player player;
 
-#define STREAM_BUFFER_SIZE (4 * 1024 * 1024)
+#define STREAM_BUFFER_SIZE (2 * 1024 * 1024)
 
 static unsigned char stream_buffer[STREAM_BUFFER_SIZE];
 static volatile int write_pos = 0;
@@ -219,42 +219,49 @@ size_t header_callback(char *buffer, size_t size, size_t nitems, void *userdata)
 
 int network_thread(unsigned int args, void *argp)
 {
-    CURL *curl = curl_easy_init();
+	while (player.state != PLAYER_STATE_STOPPING) {
+		// Wait for a new station
+		while (player.state != PLAYER_STATE_NEW) {
+			sceKernelDelayThread(100000);
+		}
 
-    curl_easy_setopt(curl, CURLOPT_URL, player.url);
-
-	// Headers
-	struct curl_slist *headers = NULL;
-	headers = curl_slist_append(headers, "User-Agent: VitaWebradios/2.0");
-	headers = curl_slist_append(headers, "Icy-MetaData: 1");
-	headers = curl_slist_append(headers, "Accept: */*");
-	headers = curl_slist_append(headers, "Connection: keep-alive");
-	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-
-	// Headers callback
-	curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, header_callback);
-	curl_easy_setopt(curl, CURLOPT_HEADERDATA, NULL);
-
-	// Stream callback
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, stream_callback);
-	curl_easy_setopt(curl, CURLOPT_BUFFERSIZE, 16 * 1024);
-    curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
-
-	// Progress callback
-	curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, progress_callback);
-	curl_easy_setopt(curl, CURLOPT_XFERINFODATA, NULL);
-	curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
-
-    // HTTPS (disable checks)
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-
-	player.state = PLAYER_STATE_PLAYING;
-
-    curl_easy_perform(curl);	// Blocking
-
-	curl_slist_free_all(headers);
-    curl_easy_cleanup(curl);
+		CURL *curl = curl_easy_init();
+	
+		curl_easy_setopt(curl, CURLOPT_URL, player.url);
+	
+		// Headers
+		struct curl_slist *headers = NULL;
+		headers = curl_slist_append(headers, "User-Agent: VitaWebradios/2.0");
+		headers = curl_slist_append(headers, "Icy-MetaData: 1");
+		headers = curl_slist_append(headers, "Accept: */*");
+		headers = curl_slist_append(headers, "Connection: keep-alive");
+		curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+	
+		// Headers callback
+		curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, header_callback);
+		curl_easy_setopt(curl, CURLOPT_HEADERDATA, NULL);
+	
+		// Stream callback
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, stream_callback);
+		curl_easy_setopt(curl, CURLOPT_BUFFERSIZE, 16 * 1024);
+		curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
+	
+		// Progress callback
+		curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, progress_callback);
+		curl_easy_setopt(curl, CURLOPT_XFERINFODATA, NULL);
+		curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+	
+		// HTTPS (disable checks)
+		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+	
+		player.state = PLAYER_STATE_PLAYING;
+	
+		curl_easy_perform(curl);	// Blocking
+	
+		curl_slist_free_all(headers);
+		curl_easy_cleanup(curl);
+	}
 
     return 0;
 }
