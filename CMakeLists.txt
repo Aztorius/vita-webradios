@@ -45,8 +45,6 @@ target_link_libraries(${PROJECT_NAME}
   SceShaccCgExt
   SceShaccCg_stub
   taihen_stub
-  SceSsl_stub
-  SceHttp_stub
   SceNetCtl_stub
   SceNet_stub
   SceDisplay_stub
