@@ -57,6 +57,7 @@ enum player_state {
 enum audio_format {
 	AUDIO_FORMAT_MP3,
 	AUDIO_FORMAT_AAC,
+	AUDIO_FORMAT_OGG,
 };
 
 struct player {
@@ -183,8 +184,10 @@ int play_webradio(const char *url)
 		sceClibPrintf("Content-Type: %s\n", headerFieldValue);
 		if (headerFieldValue == "audio/mpeg") {
 			player.audio_format = AUDIO_FORMAT_MP3;
-		} else if (headerFieldValue == "audio/aacp") {
+		} else if (headerFieldValue == "audio/aac" || headerFieldValue == "audio/aacp") {
 			player.audio_format = AUDIO_FORMAT_AAC;
+		} else if (headerFieldValue == "audio/ogg") {
+			player.audio_format = AUDIO_FORMAT_OGG;
 		} else {
 			// Use MP3 by default
 			player.audio_format = AUDIO_FORMAT_MP3;
