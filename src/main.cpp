@@ -210,18 +210,16 @@ size_t header_callback(char *buffer, size_t size, size_t nitems, void *userdata)
     }
 
     if (!strncasecmp(buffer, "content-type:", 13)) {
-		char content_type[30];
-		strncpy(content_type, buffer + 13, 30);
-        printf("Content-Type = %.*s", (int)len, content_type);
+        printf("Content-Type = %.*s", (int)len, buffer);
 
-		if (strstr(content_type, "audio/mpeg")) {
+		if (strstr(buffer, "audio/mpeg")) {
 			player.audio_type = AUDIO_FORMAT_MP3;
-		} else if (strstr(content_type, "audio/acc")) {
+		} else if (strstr(buffer, "audio/aac")) {
 			player.audio_type = AUDIO_FORMAT_AAC;
-		} else if (strstr(content_type, "audio/ogg")) {
+		} else if (strstr(buffer, "audio/ogg")) {
 			player.audio_type = AUDIO_FORMAT_OGG;
 		} else {
-			// Suppose MP3
+			printf("Audio type unknown, suppose MP3\n");
 			player.audio_type = AUDIO_FORMAT_MP3;
 		}
 
