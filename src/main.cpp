@@ -105,6 +105,11 @@ int progress_callback(void *clientp,
                       curl_off_t ulnow)
 {
     if (player.state != PLAYER_STATE_PLAYING) {
+		sceKernelLockMutex(audio_mutex, 1, NULL);
+		read_pos = 0;
+		write_pos = 0;
+		sceKernelUnlockMutex(audio_mutex, 1);
+
 		// stop curl
         return 1;
 	}
@@ -276,31 +281,40 @@ int audio_thread(unsigned int args, void *argp)
 	unsigned int outsize = 0;
 	int channels = 0;
 	int port = -1;
+	int ret = 0;
 
     while (player.state != PLAYER_STATE_STOPPING) {
         int count = 0;
 
 		sceKernelLockMutex(audio_mutex, 1, NULL);
 
+		if (player.state == PLAYER_STATE_WAITING || player.state == PLAYER_STATE_NEW) {
+			do {
+				// Consume every audio remaining without playing it
+				ret = MP3_Decode(NULL, 0, outbuffer, BUFFER_LENGTH, &outsize);
+			} while (!ret);
+
+			sceKernelUnlockMutex(audio_mutex, 1);
+			sceKernelDelayThread(100000); // 100ms
+			continue;
+		}
+
         while (read_pos != write_pos && count < AUDIO_CHUNK) {
             audio_chunk[count++] = stream_buffer[read_pos];
             read_pos = (read_pos + 1) % STREAM_BUFFER_SIZE;
 
 			if (count == AUDIO_CHUNK) {
-				int ret = 0;
 				ret = MP3_Feed(audio_chunk, AUDIO_CHUNK);
 				count = 0;
 			}
         }
 
 		if (count > 0) {
-			int ret = 0;
 			ret = MP3_Feed(audio_chunk, count);
 		}
 
 		sceKernelUnlockMutex(audio_mutex, 1);
 
-		int ret = 0;
 		ret = MP3_Decode(NULL, 0, outbuffer, BUFFER_LENGTH, &outsize);
 
 		if (ret == -11) {
