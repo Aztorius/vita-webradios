@@ -14,6 +14,7 @@
 #include <psp2/kernel/clib.h>
 #include <psp2/kernel/processmgr.h>
 #include <psp2/kernel/sysmem.h>
+#include <psp2/kernel/threadmgr.h>
 #include <psp2/io/stat.h>
 #include <psp2/libssl.h>
 #include <psp2/net/http.h>
@@ -74,20 +75,28 @@ struct player {
 	audio_format audio_type;
 	bool icy_metadata_enabled;
 	int icy_metaint;
-	int icy_metadata_index;
+	int icy_count;
 	int icy_part_length;
 	neon_fft_config *visualizer_config;
 };
 
 static struct player player;
-static int audio_mutex;
-static int visualizer_mutex;
 
 #define STREAM_BUFFER_SIZE (256 * 1024)
 
 static unsigned char stream_buffer[STREAM_BUFFER_SIZE];
 static volatile int write_pos = 0;
 static volatile int read_pos = 0;
+
+#define ICY_METADATA_MAX 512
+
+static char icy_metadata[ICY_METADATA_MAX];
+static volatile int icy_metadata_ready = 0;
+
+// Mutex
+static int audio_mutex;
+static int icy_meta_mutex;
+static int visualizer_mutex;
 
 
 int progress_callback(void *clientp,
@@ -108,16 +117,56 @@ size_t stream_callback(void *ptr, size_t size, size_t nmemb, void *userdata)
 {
     size_t bytes = size * nmemb;
     unsigned char *data = (unsigned char *)ptr;
+	size_t i = 0;
 
-    for (size_t i = 0; i < bytes; i++) {
-        int next = (write_pos + 1) % STREAM_BUFFER_SIZE;
+    while (i < bytes) {
+        // Audio
+		if (!player.icy_metadata_enabled) {
+			int next = (write_pos + 1) % STREAM_BUFFER_SIZE;
 
-		// Full buffer
-        if (next == read_pos)
-            break;
+			// Full buffer
+			if (next == read_pos)
+				break;
 
-        stream_buffer[write_pos] = data[i];
-        write_pos = next;
+			stream_buffer[write_pos] = data[i];
+			write_pos = next;
+		} else {
+			if (player.icy_metaint > 0 && player.icy_count > 0) {
+				sceKernelLockMutex(audio_mutex, 1, NULL);
+
+				int next = (write_pos + 1) % STREAM_BUFFER_SIZE;
+				if (next != read_pos) {
+					stream_buffer[write_pos] = data[i];
+					write_pos = next;
+				}
+
+				sceKernelUnlockMutex(audio_mutex, 1);
+
+				player.icy_count--;
+				i++;
+				continue;
+			}
+	
+			// Metadata
+			if (player.icy_metaint > 0 && player.icy_count == 0) {
+	
+				int meta_len = data[i] * 16;
+				i++;
+	
+				if (meta_len > 0 && meta_len < ICY_METADATA_MAX) {
+					sceKernelLockMutex(icy_meta_mutex, 1, NULL);
+
+					memcpy(icy_metadata, &data[i], meta_len);
+					icy_metadata[meta_len] = 0;
+					icy_metadata_ready = 1;
+
+					sceKernelUnlockMutex(icy_meta_mutex, 1);
+				}
+	
+				i += meta_len;
+				player.icy_count = player.icy_metaint;
+			}
+		}
     }
 
     return bytes;
@@ -133,7 +182,7 @@ size_t header_callback(char *buffer, size_t size, size_t nitems, void *userdata)
 
 		player.icy_metadata_enabled = true;
 		player.icy_metaint = metaint;
-		player.icy_metadata_index = metaint;
+		player.icy_count = metaint;
     }
 
     if (!strncasecmp(buffer, "content-type:", 13)) {
@@ -210,10 +259,14 @@ int audio_thread(unsigned int args, void *argp)
     while (player.state != PLAYER_STATE_STOPPING) {
         int count = 0;
 
+		sceKernelLockMutex(audio_mutex, 1, NULL);
+
         while (read_pos != write_pos && count < AUDIO_CHUNK) {
             audio_chunk[count++] = stream_buffer[read_pos];
             read_pos = (read_pos + 1) % STREAM_BUFFER_SIZE;
         }
+
+		sceKernelUnlockMutex(audio_mutex, 1);
 
         if (count > 0) {
 			int ret = 0;
@@ -285,6 +338,25 @@ audio_thread_end:
 	return 0;
 }
 
+void parse_icy_metadata()
+{
+    if (!icy_metadata_ready)
+        return;
+
+    char *title = strstr(icy_metadata, "StreamTitle='");
+    if (title) {
+        title += strlen("StreamTitle='");
+        char *end = strchr(title, '\'');
+        if (end) {
+            *end = 0;
+            printf("🎵 Now Playing: %s\n", title);
+        }
+    }
+
+    icy_metadata_ready = 0;
+}
+
+
 
 int main(void)
 {
@@ -353,8 +425,14 @@ int main(void)
 		return 1;
 	}
 
-	audio_mutex = sceKernelCreateMutex("audioMutex", 0, 0, NULL);
+	audio_mutex = sceKernelCreateMutex("audio_mutex", 0, 0, NULL);
 	if (audio_mutex < 0) {
+		printf("Error creating mutex\n");
+		return 1;
+	}
+
+	icy_meta_mutex = sceKernelCreateMutex("icy_meta_mutex", 0, 0, NULL);
+	if (icy_meta_mutex < 0) {
 		printf("Error creating mutex\n");
 		return 1;
 	}
@@ -627,6 +705,7 @@ int main(void)
     sceKernelDeleteThread(player.http_thread_id);
 
 	sceKernelDeleteMutex(audio_mutex);
+	sceKernelDeleteMutex(icy_meta_mutex);
 	sceKernelDeleteMutex(visualizer_mutex);
 
 	// Cleanup
