@@ -37,40 +37,18 @@ int copyfile(const char *destfile, const char *srcfile)
 	return 0;
 }
 
-
-char *icy_parse_stream_title(char *data, int size)
+bool is_samplerate_vita_compatible(int samplerate)
 {
-	// Find "StreamTitle='XXX'" in data and replace data value with "XXX\0"
-	if (size <= 13) {
-		sceClibPrintf("ICY Metadata to short to find stream title\n");
-		return NULL;
+	int compatible_freqs[] = {8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000};
+	int samplerate_is_compatible = false;
+	int nsamples = 0;
+
+	for (int i = 0; i < sizeof(compatible_freqs); i++) {
+		if (samplerate == compatible_freqs[i]) {
+			samplerate_is_compatible = true;
+			break;
+		}
 	}
 
-	char *title = (char*)malloc(size);
-	if (!title) {
-		sceClibPrintf("Cannot allocate title\n");
-		return NULL;
-	}
-
-	memcpy(title, data, size);
-	title[size-1] = '\0';
-
-	char *result_left = strstr(title, "StreamTitle='");
-	if (!result_left) {
-		sceClibPrintf("Cannot find \"StreamTitle='\"\n");
-		free(title);
-		return NULL;
-	}
-
-	char *result_right = strstr(title + 13, "'");
-	if (!result_right) {
-		sceClibPrintf("Cannot find \"'\"\n");
-		free(title);
-		return NULL;
-	}
-
-	int title_size = result_right - (result_left + 13) + 1;
-	memmove(title, result_left + 13, title_size);
-	title[title_size-1] = '\0';
-	return title;
+	return samplerate_is_compatible;
 }

@@ -26,12 +26,14 @@ add_executable(${PROJECT_NAME}
   src/main.cpp
   src/utils.cpp
   src/audio/mp3.c
+  src/audio/aac.c
   src/m3u_parser/m3u.c
   src/gui/imgui_demo.cpp
   src/visualizer/neon_fft.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}
+  faad
   imgui
   vitaGL
   vitashark
