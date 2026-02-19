@@ -92,7 +92,7 @@ struct player {
 
 static struct player player;
 
-#define STREAM_BUFFER_SIZE (2 * 1024 * 1024)
+#define STREAM_BUFFER_SIZE (1 * 1024 * 1024)
 
 static unsigned char stream_buffer[STREAM_BUFFER_SIZE];
 static volatile int write_pos = 0;
@@ -116,11 +116,6 @@ int progress_callback(void *clientp,
                       curl_off_t ulnow)
 {
     if (player.state != PLAYER_STATE_PLAYING) {
-		sceKernelLockMutex(audio_mutex, 1, NULL);
-		read_pos = 0;
-		write_pos = 0;
-		sceKernelUnlockMutex(audio_mutex, 1);
-
 		// stop curl
         return 1;
 	}
@@ -212,7 +207,7 @@ size_t header_callback(char *buffer, size_t size, size_t nitems, void *userdata)
     }
 
     if (!strncasecmp(buffer, "content-type:", 13)) {
-        printf("Content-Type = %.*s", (int)len, buffer);
+        printf("%.*s", (int)len, buffer);
 
 		if (strstr(buffer, "audio/mpeg")) {
 			player.audio_type = AUDIO_FORMAT_MP3;
@@ -238,6 +233,16 @@ int network_thread(unsigned int args, void *argp)
 		while (player.state != PLAYER_STATE_NEW) {
 			sceKernelDelayThread(100000);
 		}
+		
+		// Init buffer
+		sceKernelLockMutex(audio_mutex, 1, NULL);
+		read_pos = 0;
+		write_pos = 0;
+		sceKernelUnlockMutex(audio_mutex, 1);
+
+		player.audio_type = AUDIO_FORMAT_UNKNOWN;
+
+		printf("CURL: %s\n", player.url);
 
 		CURL *curl = curl_easy_init();
 	
@@ -273,6 +278,8 @@ int network_thread(unsigned int args, void *argp)
 	
 		curl_easy_perform(curl);	// Blocking
 	
+		printf("CURL: ending stream\n");
+
 		curl_slist_free_all(headers);
 		curl_easy_cleanup(curl);
 	}
@@ -293,33 +300,44 @@ int audio_thread(unsigned int args, void *argp)
 	int port = -1;
 	int ret = 0;
 
-	// Init mpg123 for MP3
-	ret = MP3_Init();
-	if (ret) {
-		printf("MP3_Init %i\n", ret);
-		return 1;
-	}
-
+	bool mp3_initialized = false;
 	bool aac_initialized = false;
 	NeAACDecHandle aac_decoder = NULL;
+	const char *current_url = NULL;
 
 	// Main audio loop
     while (player.state != PLAYER_STATE_STOPPING) {
-		sceKernelLockMutex(audio_mutex, 1, NULL);
 
-		do {
-			// Consume every MP3 audio remaining without playing it
-			ret = MP3_Decode(NULL, 0, outbuffer, BUFFER_LENGTH, &outsize);
-		} while (!ret);
+		if (player.state != PLAYER_STATE_PLAYING) {
+			sceKernelDelayThread(100000); // 100ms delay
+			continue;
+		}
 
-		sceKernelUnlockMutex(audio_mutex, 1);
+		current_url = player.url;
 
-		while (player.state == PLAYER_STATE_PLAYING) {
-			int count = 0;
+		if (player.audio_type == AUDIO_FORMAT_MP3) {
+			printf("New MP3 detected\n");
 
-			sceKernelLockMutex(audio_mutex, 1, NULL);
+			// Init mpg123 for MP3
+			ret = MP3_Init();
+			if (ret) {
+				printf("MP3_Init %i\n", ret);
+				return 1;
+			}
 
-			if (player.audio_type == AUDIO_FORMAT_MP3) {
+			while (player.state == PLAYER_STATE_PLAYING) {
+				int count = 0;
+
+				sceKernelLockMutex(audio_mutex, 1, NULL);
+
+				if (current_url != player.url) {
+					// We have a new webradio, discard all remaining data
+					do {
+						ret = MP3_Decode(NULL, 0, outbuffer, BUFFER_LENGTH, &outsize);
+					} while (!ret);
+					break;
+				}
+
 				while (read_pos != write_pos && count < AUDIO_CHUNK) {
 					audio_chunk[count++] = stream_buffer[read_pos];
 					read_pos = (read_pos + 1) % STREAM_BUFFER_SIZE;
@@ -329,7 +347,101 @@ int audio_thread(unsigned int args, void *argp)
 						ret = MP3_Feed(audio_chunk, count);
 					}
 				}
-			} else if (player.audio_type == AUDIO_FORMAT_AAC) {
+
+				sceKernelUnlockMutex(audio_mutex, 1);
+
+				ret = MP3_Decode(NULL, 0, outbuffer, BUFFER_LENGTH, &outsize);
+	
+				if (ret == -11) {
+					printf("MP3 init ---\n");
+					// New format, close old output if necessary
+					if (port >= 0) {
+						sceAudioOutReleasePort(port);
+					}
+	
+					channels = MP3_GetChannels();
+					samplerate = MP3_GetSampleRate();
+					int nsamples = 0;
+	
+					if (!is_samplerate_vita_compatible(samplerate)) {
+						printf("Samplerate %i is not compatible\n", samplerate);
+						continue;
+					}
+	
+					SceAudioOutMode channels_mode = SCE_AUDIO_OUT_MODE_STEREO;
+					if (channels == 1) {
+						channels_mode = SCE_AUDIO_OUT_MODE_MONO;
+						nsamples = BUFFER_LENGTH >> 1; // 2 bytes per sample in mono mode
+					} else if (channels == 2) {
+						channels_mode = SCE_AUDIO_OUT_MODE_STEREO;
+						nsamples = BUFFER_LENGTH >> 2; // 4 bytes per sample in stereo mode (2x2)
+					} else {
+						printf("Wrong number of channel in stream !");
+						continue;
+					}
+	
+					player.samplerate = samplerate;
+					player.nb_channels = channels;
+					player.nb_samples = nsamples;
+					// sceKernelLockMutex(visualizer_mutex, 1, NULL);
+					// player.visualizer_rebuild = true;
+					// sceKernelUnlockMutex(visualizer_mutex, 1);
+	
+					port = sceAudioOutOpenPort(SCE_AUDIO_OUT_PORT_TYPE_BGM, nsamples, samplerate, channels_mode);
+					if (port < 0) {
+						printf("Error on sceAudioOutOpenPort\n");
+					}
+					printf("Playing %s %s sample_rate %i channels %i\n", player.title, player.url, samplerate, channels);
+					sceAudioOutSetConfig(port, -1, -1, channels_mode);
+					SceAudioOutChannelFlag flags = (SceAudioOutChannelFlag)(SCE_AUDIO_VOLUME_FLAG_L_CH & SCE_AUDIO_VOLUME_FLAG_R_CH);
+					int vol = SCE_AUDIO_VOLUME_0DB;
+					int volumes[2] = {vol, vol};
+					if (sceAudioOutSetVolume(port, flags, volumes)) {
+						printf("Error setting volume\n");
+					}
+				}
+
+				if (outsize > 0 && ret != -11) {
+					// Only play music if there is some music data
+					// sceKernelLockMutex(visualizer_mutex, 1, NULL);
+					// neon_fft_fill_buffer(player.visualizer_config, (int16_t*)outbuffer, outsize / (2 * channels));
+					// sceKernelUnlockMutex(visualizer_mutex, 1);
+	
+					if (port >= 0) {
+						sceAudioOutOutput(port, outbuffer);
+					}
+				}
+
+				sceKernelDelayThread(1000);
+			}
+
+			printf("MP3 cleanup\n");
+
+			do {
+				// Consume every MP3 audio remaining without playing it
+				ret = MP3_Decode(NULL, 0, outbuffer, BUFFER_LENGTH, &outsize);
+			} while (!ret);
+
+			MP3_Term();
+
+			if (port >= 0) {
+				// Close audio port
+				sceAudioOutReleasePort(port);
+			}
+		} else if (player.audio_type == AUDIO_FORMAT_AAC) {
+			printf("New AAC detected\n");
+			aac_initialized = false;
+
+			while (player.state == PLAYER_STATE_PLAYING) {
+				int count = 0;
+
+				if (current_url != player.url) {
+					// We have a new webradio
+					break;
+				}
+
+				sceKernelLockMutex(audio_mutex, 1, NULL);
+
 				while (read_pos != write_pos && count < AUDIO_CHUNK) {
 					// Read one byte from stream to the chunk
 					audio_chunk[count++] = stream_buffer[read_pos];
@@ -355,8 +467,8 @@ int audio_thread(unsigned int args, void *argp)
 						sceKernelUnlockMutex(audio_mutex, 1);
 
 						if (!aac_initialized) {
+							printf("AAC init ---\n");
 							// Init faad2 for AAC
-							printf("FAAD2 capabilities 0x%x\n", NeAACDecGetCapabilities());
 							aac_decoder = NeAACDecOpen();
 							NeAACDecConfigurationPtr aac_cfg = NeAACDecGetCurrentConfiguration(aac_decoder);
 							aac_cfg->outputFormat = FAAD_FMT_16BIT;
@@ -368,6 +480,7 @@ int audio_thread(unsigned int args, void *argp)
 							long ret = NeAACDecInit(aac_decoder, audio_chunk, count, &samplerate, (unsigned char *)&channels);
 
 							if (ret < 0) {
+								printf("Error NeAACDecInit\n");
 								NeAACDecClose(aac_decoder);
 								aac_decoder = NULL;
 								return -1;
@@ -396,114 +509,57 @@ int audio_thread(unsigned int args, void *argp)
 							player.samplerate = samplerate;
 							player.nb_channels = channels;
 							player.nb_samples = nsamples;
-							player.visualizer_rebuild = true;
+							// player.visualizer_rebuild = true;
 
 							aac_initialized = true;
 
 							// AAC always works with 1024 samples
 							port = sceAudioOutOpenPort(SCE_AUDIO_OUT_PORT_TYPE_BGM, 1024, samplerate, channels_mode);
+							if (!port) {
+								printf("Error while opening port\n");
+							}
 							printf("Playing %s %s sample_rate %i channels %i\n", player.title, player.url, samplerate, channels);
+
+							sceKernelDelayThread(1000000); // 1000ms delay to have some buffer
 						}
 
 						// We have a complete frame and FAAD2 is initialized, let's decode and play
 						NeAACDecFrameInfo aac_frame_info;
 						void *pcm = NeAACDecDecode(aac_decoder, &aac_frame_info, audio_chunk, count);
-						if (aac_frame_info.error == 0 && aac_frame_info.samples > 0) {
-							sceKernelLockMutex(visualizer_mutex, 1, NULL);
-							neon_fft_fill_buffer(player.visualizer_config, (int16_t*)pcm, 1024 / channels);
-							sceKernelUnlockMutex(visualizer_mutex, 1);
-
-							sceAudioOutOutput(port, pcm);
+						if (aac_frame_info.error == 0 && aac_frame_info.samples > 0 && aac_initialized) {
+							// sceKernelLockMutex(visualizer_mutex, 1, NULL);
+							// neon_fft_fill_buffer(player.visualizer_config, (int16_t*)pcm, 1024 / channels);
+							// sceKernelUnlockMutex(visualizer_mutex, 1);
+							if (port >= 0) {
+								sceAudioOutOutput(port, pcm);
+							}
 						}
 
-						count = 0;
-
 						sceKernelLockMutex(audio_mutex, 1, NULL);
+
+						count = 0;
 					}
 				}
+
+				sceKernelUnlockMutex(audio_mutex, 1);
+				sceKernelDelayThread(1000);
 			}
 
-			sceKernelUnlockMutex(audio_mutex, 1);
-
-			if (player.audio_type == AUDIO_FORMAT_MP3) {
-				ret = MP3_Decode(NULL, 0, outbuffer, BUFFER_LENGTH, &outsize);
-	
-				if (ret == -11) {
-					// New format, close old output if necessary
-					if (port >= 0) {
-						sceAudioOutReleasePort(port);
-					}
-	
-					channels = MP3_GetChannels();
-					samplerate = MP3_GetSampleRate();
-					int nsamples = 0;
-	
-					if (!is_samplerate_vita_compatible(samplerate)) {
-						printf("Samplerate %i is not compatible\n", samplerate);
-						break;
-					}
-	
-					SceAudioOutMode channels_mode = SCE_AUDIO_OUT_MODE_STEREO;
-					if (channels == 1) {
-						channels_mode = SCE_AUDIO_OUT_MODE_MONO;
-						nsamples = BUFFER_LENGTH >> 1; // 2 bytes per sample in mono mode
-					} else if (channels == 2) {
-						channels_mode = SCE_AUDIO_OUT_MODE_STEREO;
-						nsamples = BUFFER_LENGTH >> 2; // 4 bytes per sample in stereo mode (2x2)
-					} else {
-						printf("Wrong number of channel in stream !");
-						break;
-					}
-	
-					player.samplerate = samplerate;
-					player.nb_channels = channels;
-					player.nb_samples = nsamples;
-					player.visualizer_rebuild = true;
-	
-					port = sceAudioOutOpenPort(SCE_AUDIO_OUT_PORT_TYPE_BGM, nsamples, samplerate, channels_mode);
-					printf("Playing %s %s sample_rate %i channels %i\n", player.title, player.url, samplerate, channels);
-					sceAudioOutSetConfig(port, -1, -1, channels_mode);
-					SceAudioOutChannelFlag flags = (SceAudioOutChannelFlag)(SCE_AUDIO_VOLUME_FLAG_L_CH & SCE_AUDIO_VOLUME_FLAG_R_CH);
-					int vol = SCE_AUDIO_VOLUME_0DB;
-					int volumes[2] = {vol, vol};
-					if (sceAudioOutSetVolume(port, flags, volumes)) {
-						printf("Error setting volume\n");
-					}
-	
-					sceKernelDelayThread(500000);
-				}
-
-				if (outsize > 0) {
-					// Only play music if there is some music data
-					sceKernelLockMutex(visualizer_mutex, 1, NULL);
-					neon_fft_fill_buffer(player.visualizer_config, (int16_t*)outbuffer, outsize / (2 * channels));
-					sceKernelUnlockMutex(visualizer_mutex, 1);
-	
-					if (port >= 0) {
-						sceAudioOutOutput(port, outbuffer);
-					}
-				} else {
-					sceKernelDelayThread(100000); // 100ms delay if nothing to play
-				}
+			if (port >= 0) {
+				// Close audio port
+				sceAudioOutReleasePort(port);
 			}
 
-			sceKernelDelayThread(1000);
+			if (aac_decoder) {
+				NeAACDecClose(aac_decoder);
+				aac_decoder = NULL;
+			}
 		}
-
-		aac_initialized = false;
 
 		sceKernelDelayThread(100000);
     }
 
 audio_thread_end:
-	if (port >= 0) {
-		sceAudioOutReleasePort(port);
-	}
-
-	MP3_Term();
-	if (aac_decoder) {
-		NeAACDecClose(aac_decoder);
-	}
 	return 0;
 }
 

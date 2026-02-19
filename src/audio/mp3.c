@@ -78,7 +78,7 @@ int MP3_Decode(void *inbuf, unsigned int inlength, void *outbuf, unsigned int ou
 	} else if (ret == MPG123_ERR) {
 		printf("MP3_Decode error: %s\n", mpg123_strerror(mp3));
 	} else if (ret == MPG123_NEED_MORE) {
-		printf("MP3_Decode needs more data\n");
+		// printf("MP3_Decode needs more data\n");
 	}
 
 	return ret;
