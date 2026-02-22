@@ -35,6 +35,8 @@ int AudioInitOutput(int samplerate, int nb_channels, int nb_samples)
 
     AudioSetVolumeOutput(SCE_AUDIO_VOLUME_0DB);
 
+    printf("Audio output opened: samplerate=%i,nb_samples=%i,nb_channels=%i\n", samplerate, nb_samples, nb_channels);
+
     return 0;
 }
 
@@ -76,7 +78,7 @@ int AudioFreeOutput()
     if (audio_port_number >= 0) {
         sceAudioOutReleasePort(audio_port_number);
         audio_port_number = -1;
-        printf("Audio port closed\n");
+        printf("Audio output closed\n");
     }
 
     return 0;
