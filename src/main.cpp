@@ -296,12 +296,11 @@ int audio_thread(unsigned int args, void *argp)
     unsigned char audio_chunk[AUDIO_CHUNK] = {0};
 	unsigned char outbuffer[BUFFER_LENGTH] = {0};
 	unsigned int outsize = 0;
-	unsigned long channels = 0;
-	unsigned long samplerate = 0;
+	int channels = 0;
+	int samplerate = 0;
 	int ret = 0;
 
 	bool aac_initialized = false;
-	NeAACDecHandle aac_decoder = NULL;
 	const char *current_url = NULL;
 
 	// Main audio loop
@@ -404,7 +403,6 @@ int audio_thread(unsigned int args, void *argp)
 
 			while (player.state == PLAYER_STATE_PLAYING) {
 				int count = 0;
-				void *pcm = NULL;
 
 				if (current_url != player.url) {
 					// We have a new webradio
@@ -441,29 +439,9 @@ int audio_thread(unsigned int args, void *argp)
 					sceKernelUnlockMutex(audio_mutex, 1);
 
 					if (!aac_initialized) {
-						printf("AAC init ---\n");
-						// Init faad2 for AAC
-						aac_decoder = NeAACDecOpen();
-						NeAACDecConfigurationPtr aac_cfg = NeAACDecGetCurrentConfiguration(aac_decoder);
-						aac_cfg->outputFormat = FAAD_FMT_16BIT;
-						aac_cfg->downMatrix = 1; // A 5.1 channels should be downmatrixed to 2.0 channels for Vita
-						if (!NeAACDecSetConfiguration(aac_decoder, aac_cfg)) {
-							printf("Error with NeAACDecSetConfiguration\n");
-						}
-
-						long ret = NeAACDecInit(aac_decoder, audio_chunk, count, &samplerate, (unsigned char *)&channels);
-
-						if (ret < 0) {
-							printf("Error NeAACDecInit\n");
-							NeAACDecClose(aac_decoder);
-							aac_decoder = NULL;
-							return -1;
-						}
-
+						AAC_Init(audio_chunk, count, &channels, &samplerate);
 						AudioFreeOutput();
-
 						int nsamples = 0;
-
 						if (channels == 1) {
 							nsamples = BUFFER_LENGTH >> 1; // 2 bytes per sample in mono mode
 						} else {
@@ -485,13 +463,13 @@ int audio_thread(unsigned int args, void *argp)
 					}
 
 					// We have a complete frame and FAAD2 is initialized, let's decode and play
-					NeAACDecFrameInfo aac_frame_info;
-					pcm = NeAACDecDecode(aac_decoder, &aac_frame_info, audio_chunk, count);
-					if (aac_frame_info.error == 0 && aac_frame_info.samples > 0 && aac_initialized) {
+					unsigned long read_samples = 0;
+					void *output_buffer = NULL;
+					if (!AAC_Decode(audio_chunk, count, &read_samples, &output_buffer) && read_samples > 0 && aac_initialized) {
 						// sceKernelLockMutex(visualizer_mutex, 1, NULL);
 						// neon_fft_fill_buffer(player.visualizer_config, (int16_t*)pcm, 1024 / channels);
 						// sceKernelUnlockMutex(visualizer_mutex, 1);
-						AudioOutOutput(pcm);
+						AudioOutOutput(output_buffer);
 					}
 
 					sceKernelLockMutex(audio_mutex, 1, NULL);
@@ -500,17 +478,11 @@ int audio_thread(unsigned int args, void *argp)
 				}
 
 				sceKernelUnlockMutex(audio_mutex, 1);
-				if (!pcm) {
-					sceKernelDelayThread(100000);
-				}
 			}
 
-			if (aac_initialized) {
-				NeAACDecClose(aac_decoder);
-				aac_decoder = NULL;
-				aac_initialized = false;
-				AudioFreeOutput();
-			}
+			AAC_Free();
+			aac_initialized = false;
+			AudioFreeOutput();
 		}
 
 		sceKernelDelayThread(100000);
