@@ -369,9 +369,9 @@ int audio_thread(unsigned int args, void *argp)
 					player.samplerate = samplerate;
 					player.nb_channels = channels;
 					player.nb_samples = nsamples;
-					// sceKernelLockMutex(visualizer_mutex, 1, NULL);
-					// player.visualizer_rebuild = true;
-					// sceKernelUnlockMutex(visualizer_mutex, 1);
+					sceKernelLockMutex(visualizer_mutex, 1, NULL);
+					player.visualizer_rebuild = true;
+					sceKernelUnlockMutex(visualizer_mutex, 1);
 	
 					AudioInitOutput(samplerate, channels, nsamples);
 					printf("Playing %s %s sample_rate %i channels %i\n", player.title, player.url, samplerate, channels);
@@ -379,9 +379,9 @@ int audio_thread(unsigned int args, void *argp)
 
 				if (outsize > 0 && ret != -11) {
 					// Only play music if there is some music data
-					// sceKernelLockMutex(visualizer_mutex, 1, NULL);
-					// neon_fft_fill_buffer(player.visualizer_config, (int16_t*)outbuffer, outsize / (2 * channels));
-					// sceKernelUnlockMutex(visualizer_mutex, 1);
+					sceKernelLockMutex(visualizer_mutex, 1, NULL);
+					neon_fft_fill_buffer(player.visualizer_config, (int16_t*)outbuffer, outsize / (2 * channels));
+					sceKernelUnlockMutex(visualizer_mutex, 1);
 	
 					AudioOutOutput(outbuffer);
 				}
@@ -452,7 +452,9 @@ int audio_thread(unsigned int args, void *argp)
 						player.samplerate = samplerate;
 						player.nb_channels = channels;
 						player.nb_samples = nsamples;
-						// player.visualizer_rebuild = true;
+						sceKernelLockMutex(visualizer_mutex, 1, NULL);
+						player.visualizer_rebuild = true;
+						sceKernelUnlockMutex(visualizer_mutex, 1);
 
 						aac_initialized = true;
 
@@ -460,16 +462,16 @@ int audio_thread(unsigned int args, void *argp)
 						AudioInitOutput(samplerate, channels, 1024);
 						printf("Playing %s %s sample_rate %i channels %i\n", player.title, player.url, samplerate, channels);
 
-						sceKernelDelayThread(1000000); // 1000ms delay to have some buffer
+						sceKernelDelayThread(500000); // 500ms delay to have some buffer
 					}
 
 					// We have a complete frame and FAAD2 is initialized, let's decode and play
 					unsigned long read_samples = 0;
 					void *output_buffer = NULL;
 					if (!AAC_Decode(audio_chunk, count, &read_samples, &output_buffer) && read_samples > 0 && aac_initialized) {
-						// sceKernelLockMutex(visualizer_mutex, 1, NULL);
-						// neon_fft_fill_buffer(player.visualizer_config, (int16_t*)pcm, 1024 / channels);
-						// sceKernelUnlockMutex(visualizer_mutex, 1);
+						sceKernelLockMutex(visualizer_mutex, 1, NULL);
+						neon_fft_fill_buffer(player.visualizer_config, (int16_t*)output_buffer, 1024);
+						sceKernelUnlockMutex(visualizer_mutex, 1);
 						AudioOutOutput(output_buffer);
 					}
 
