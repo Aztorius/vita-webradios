@@ -300,7 +300,6 @@ int audio_thread(unsigned int args, void *argp)
 	int port = -1;
 	int ret = 0;
 
-	bool mp3_initialized = false;
 	bool aac_initialized = false;
 	NeAACDecHandle aac_decoder = NULL;
 	const char *current_url = NULL;
@@ -331,10 +330,7 @@ int audio_thread(unsigned int args, void *argp)
 				sceKernelLockMutex(audio_mutex, 1, NULL);
 
 				if (current_url != player.url) {
-					// We have a new webradio, discard all remaining data
-					do {
-						ret = MP3_Decode(NULL, 0, outbuffer, BUFFER_LENGTH, &outsize);
-					} while (!ret);
+					// We have a new webradio
 					break;
 				}
 
@@ -357,6 +353,7 @@ int audio_thread(unsigned int args, void *argp)
 					// New format, close old output if necessary
 					if (port >= 0) {
 						sceAudioOutReleasePort(port);
+						port = -1;
 					}
 	
 					channels = MP3_GetChannels();
@@ -427,6 +424,7 @@ int audio_thread(unsigned int args, void *argp)
 			if (port >= 0) {
 				// Close audio port
 				sceAudioOutReleasePort(port);
+				port = -1;
 			}
 		} else if (player.audio_type == AUDIO_FORMAT_AAC) {
 			printf("New AAC detected\n");
@@ -434,6 +432,7 @@ int audio_thread(unsigned int args, void *argp)
 
 			while (player.state == PLAYER_STATE_PLAYING) {
 				int count = 0;
+				void *pcm = NULL;
 
 				if (current_url != player.url) {
 					// We have a new webradio
@@ -447,112 +446,115 @@ int audio_thread(unsigned int args, void *argp)
 					audio_chunk[count++] = stream_buffer[read_pos];
 					read_pos = (read_pos + 1) % STREAM_BUFFER_SIZE;
 
-					if (count >= 7) {
-						// We have enough data to test if ADTS is present
-						adts_header_t adts_header;
-						if (parse_adts_header(audio_chunk, count, &adts_header) != 0) {
-							// No ADTS header, move chunk by one byte to the left
-							memmove(audio_chunk, audio_chunk + 1, count - 1);
-							count--;
-							continue;
-						}
-
-						// We have a valid ADTS header
-						// We need to wait for a complete frame
-						if (count < adts_header.frame_length) {
-							// Not a complete frame (yet)
-							continue;
-						}
-
-						sceKernelUnlockMutex(audio_mutex, 1);
-
-						if (!aac_initialized) {
-							printf("AAC init ---\n");
-							// Init faad2 for AAC
-							aac_decoder = NeAACDecOpen();
-							NeAACDecConfigurationPtr aac_cfg = NeAACDecGetCurrentConfiguration(aac_decoder);
-							aac_cfg->outputFormat = FAAD_FMT_16BIT;
-							aac_cfg->downMatrix = 1; // A 5.1 channels should be downmatrixed to 2.0 channels for Vita
-							if (!NeAACDecSetConfiguration(aac_decoder, aac_cfg)) {
-								printf("Error with NeAACDecSetConfiguration\n");
-							}
-
-							long ret = NeAACDecInit(aac_decoder, audio_chunk, count, &samplerate, (unsigned char *)&channels);
-
-							if (ret < 0) {
-								printf("Error NeAACDecInit\n");
-								NeAACDecClose(aac_decoder);
-								aac_decoder = NULL;
-								return -1;
-							}
-
-							if (port >= 0) {
-								sceAudioOutReleasePort(port);
-							}
-
-							if (!is_samplerate_vita_compatible(samplerate)) {
-								printf("Samplerate %i is not compatible\n", samplerate);
-								break;
-							}
-
-							int nsamples = 0;
-
-							SceAudioOutMode channels_mode = SCE_AUDIO_OUT_MODE_STEREO;
-							if (channels == 1) {
-								channels_mode = SCE_AUDIO_OUT_MODE_MONO;
-								nsamples = BUFFER_LENGTH >> 1; // 2 bytes per sample in mono mode
-							} else {
-								channels_mode = SCE_AUDIO_OUT_MODE_STEREO;
-								nsamples = BUFFER_LENGTH >> 2; // 4 bytes per sample in stereo mode (2x2)
-							}
-
-							player.samplerate = samplerate;
-							player.nb_channels = channels;
-							player.nb_samples = nsamples;
-							// player.visualizer_rebuild = true;
-
-							aac_initialized = true;
-
-							// AAC always works with 1024 samples
-							port = sceAudioOutOpenPort(SCE_AUDIO_OUT_PORT_TYPE_BGM, 1024, samplerate, channels_mode);
-							if (!port) {
-								printf("Error while opening port\n");
-							}
-							printf("Playing %s %s sample_rate %i channels %i\n", player.title, player.url, samplerate, channels);
-
-							sceKernelDelayThread(1000000); // 1000ms delay to have some buffer
-						}
-
-						// We have a complete frame and FAAD2 is initialized, let's decode and play
-						NeAACDecFrameInfo aac_frame_info;
-						void *pcm = NeAACDecDecode(aac_decoder, &aac_frame_info, audio_chunk, count);
-						if (aac_frame_info.error == 0 && aac_frame_info.samples > 0 && aac_initialized) {
-							// sceKernelLockMutex(visualizer_mutex, 1, NULL);
-							// neon_fft_fill_buffer(player.visualizer_config, (int16_t*)pcm, 1024 / channels);
-							// sceKernelUnlockMutex(visualizer_mutex, 1);
-							if (port >= 0) {
-								sceAudioOutOutput(port, pcm);
-							}
-						}
-
-						sceKernelLockMutex(audio_mutex, 1, NULL);
-
-						count = 0;
+					if (count < 7) {
+						// We don't have enough data to test if ADTS header is present
+						continue;
 					}
+
+					adts_header_t adts_header;
+					if (parse_adts_header(audio_chunk, count, &adts_header) != 0) {
+						// No ADTS header, move chunk by one byte to the left
+						memmove(audio_chunk, audio_chunk + 1, count - 1);
+						count--;
+						continue;
+					}
+
+					// We have a valid ADTS header
+					// We need to wait for a complete frame
+					if (count < adts_header.frame_length) {
+						// Not a complete frame (yet)
+						continue;
+					}
+
+					sceKernelUnlockMutex(audio_mutex, 1);
+
+					if (!aac_initialized) {
+						printf("AAC init ---\n");
+						// Init faad2 for AAC
+						aac_decoder = NeAACDecOpen();
+						NeAACDecConfigurationPtr aac_cfg = NeAACDecGetCurrentConfiguration(aac_decoder);
+						aac_cfg->outputFormat = FAAD_FMT_16BIT;
+						aac_cfg->downMatrix = 1; // A 5.1 channels should be downmatrixed to 2.0 channels for Vita
+						if (!NeAACDecSetConfiguration(aac_decoder, aac_cfg)) {
+							printf("Error with NeAACDecSetConfiguration\n");
+						}
+
+						long ret = NeAACDecInit(aac_decoder, audio_chunk, count, &samplerate, (unsigned char *)&channels);
+
+						if (ret < 0) {
+							printf("Error NeAACDecInit\n");
+							NeAACDecClose(aac_decoder);
+							aac_decoder = NULL;
+							return -1;
+						}
+
+						if (port >= 0) {
+							sceAudioOutReleasePort(port);
+						}
+
+						if (!is_samplerate_vita_compatible(samplerate)) {
+							printf("Samplerate %i is not compatible\n", samplerate);
+							break;
+						}
+
+						int nsamples = 0;
+
+						SceAudioOutMode channels_mode = SCE_AUDIO_OUT_MODE_STEREO;
+						if (channels == 1) {
+							channels_mode = SCE_AUDIO_OUT_MODE_MONO;
+							nsamples = BUFFER_LENGTH >> 1; // 2 bytes per sample in mono mode
+						} else {
+							channels_mode = SCE_AUDIO_OUT_MODE_STEREO;
+							nsamples = BUFFER_LENGTH >> 2; // 4 bytes per sample in stereo mode (2x2)
+						}
+
+						player.samplerate = samplerate;
+						player.nb_channels = channels;
+						player.nb_samples = nsamples;
+						// player.visualizer_rebuild = true;
+
+						aac_initialized = true;
+
+						// AAC always works with 1024 samples
+						port = sceAudioOutOpenPort(SCE_AUDIO_OUT_PORT_TYPE_BGM, 1024, samplerate, channels_mode);
+						if (!port) {
+							printf("Error while opening port\n");
+						}
+						printf("Playing %s %s sample_rate %i channels %i\n", player.title, player.url, samplerate, channels);
+
+						sceKernelDelayThread(1000000); // 1000ms delay to have some buffer
+					}
+
+					// We have a complete frame and FAAD2 is initialized, let's decode and play
+					NeAACDecFrameInfo aac_frame_info;
+					pcm = NeAACDecDecode(aac_decoder, &aac_frame_info, audio_chunk, count);
+					if (aac_frame_info.error == 0 && aac_frame_info.samples > 0 && aac_initialized) {
+						// sceKernelLockMutex(visualizer_mutex, 1, NULL);
+						// neon_fft_fill_buffer(player.visualizer_config, (int16_t*)pcm, 1024 / channels);
+						// sceKernelUnlockMutex(visualizer_mutex, 1);
+						if (port >= 0) {
+							sceAudioOutOutput(port, pcm);
+						}
+					}
+
+					sceKernelLockMutex(audio_mutex, 1, NULL);
+
+					count = 0;
 				}
 
 				sceKernelUnlockMutex(audio_mutex, 1);
-				sceKernelDelayThread(1000);
+				if (!pcm) {
+					sceKernelDelayThread(100000);
+				}
 			}
 
-			if (port >= 0) {
-				// Close audio port
-				sceAudioOutReleasePort(port);
-			}
-
-			if (aac_decoder) {
+			if (aac_initialized) {
 				NeAACDecClose(aac_decoder);
 				aac_decoder = NULL;
+				aac_initialized = false;
+				// Close audio port
+				sceAudioOutReleasePort(port);
+				port = -1;
 			}
 		}
 
