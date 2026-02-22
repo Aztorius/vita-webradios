@@ -442,16 +442,11 @@ int audio_thread(unsigned int args, void *argp)
 					if (!aac_initialized) {
 						AAC_Init(audio_chunk, count, &channels, &samplerate);
 						AudioFreeOutput();
-						int nsamples = 0;
-						if (channels == 1) {
-							nsamples = BUFFER_LENGTH >> 1; // 2 bytes per sample in mono mode
-						} else {
-							nsamples = BUFFER_LENGTH >> 2; // 4 bytes per sample in stereo mode (2x2)
-						}
 
 						player.samplerate = samplerate;
 						player.nb_channels = channels;
-						player.nb_samples = nsamples;
+						// AAC always works with 1024 samples
+						player.nb_samples = 1024;
 						sceKernelLockMutex(visualizer_mutex, 1, NULL);
 						player.visualizer_rebuild = true;
 						sceKernelUnlockMutex(visualizer_mutex, 1);
