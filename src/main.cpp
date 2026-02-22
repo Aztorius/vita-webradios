@@ -242,6 +242,7 @@ int network_thread(unsigned int args, void *argp)
 		sceKernelUnlockMutex(audio_mutex, 1);
 
 		player.audio_type = AUDIO_FORMAT_UNKNOWN;
+		player.icy_metadata_enabled = false;
 
 		printf("CURL: %s\n", player.url);
 
