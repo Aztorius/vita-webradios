@@ -9,7 +9,9 @@
 static int audio_port_number = -1;
 
 int AudioInitOutput(int samplerate, int nb_channels, int nb_samples);
+int AudioChangeOutputConfig(int samplerate, int nb_channels, int nb_samples);
 int AudioFreeOutput();
 int AudioOutOutput(const void *buff);
+int AudioSetVolumeOutput(int volume);
 
 #endif

@@ -28,18 +28,47 @@ int AudioInitOutput(int samplerate, int nb_channels, int nb_samples)
     int channels_mode = nb_channels >= 2 ? SCE_AUDIO_OUT_MODE_STEREO : SCE_AUDIO_OUT_MODE_MONO;
 
     audio_port_number = sceAudioOutOpenPort(SCE_AUDIO_OUT_PORT_TYPE_BGM, nb_samples, samplerate, channels_mode);
-    if (!audio_port_number) {
+    if (audio_port_number < 0) {
         printf("Error while opening port\n");
         return 1;
     }
 
-    sceAudioOutSetConfig(audio_port_number, -1, -1, channels_mode);
+    AudioSetVolumeOutput(SCE_AUDIO_VOLUME_0DB);
+
+    return 0;
+}
+
+int AudioSetVolumeOutput(int volume)
+{
+    if (volume > SCE_AUDIO_VOLUME_0DB) {
+        volume = SCE_AUDIO_VOLUME_0DB;
+    }
+
+    if (audio_port_number < 0) {
+        printf("Cannot set volume without open port\n");
+        return 1;
+    }
+
     SceAudioOutChannelFlag flags = (SceAudioOutChannelFlag)(SCE_AUDIO_VOLUME_FLAG_L_CH & SCE_AUDIO_VOLUME_FLAG_R_CH);
-    int vol = SCE_AUDIO_VOLUME_0DB;
-    int volumes[2] = {vol, vol};
+    int volumes[2] = {volume, volume};
     if (sceAudioOutSetVolume(audio_port_number, flags, volumes)) {
         printf("Error setting volume\n");
+        return 1;
     }
+
+    return 0;
+}
+
+int AudioChangeOutputConfig(int samplerate, int nb_channels, int nb_samples)
+{
+    int channels_mode = nb_channels >= 2 ? SCE_AUDIO_OUT_MODE_STEREO : SCE_AUDIO_OUT_MODE_MONO;
+    if (!sceAudioOutSetConfig(audio_port_number, nb_samples, samplerate, channels_mode)) {
+        printf("Error changing audio output config\n");
+    }
+
+    AudioSetVolumeOutput(SCE_AUDIO_VOLUME_0DB);
+
+    return 0;
 }
 
 int AudioFreeOutput()
@@ -47,7 +76,10 @@ int AudioFreeOutput()
     if (audio_port_number >= 0) {
         sceAudioOutReleasePort(audio_port_number);
         audio_port_number = -1;
+        printf("Audio port closed\n");
     }
+
+    return 0;
 }
 
 int AudioOutOutput(const void *buff)
@@ -55,4 +87,6 @@ int AudioOutOutput(const void *buff)
     if (audio_port_number >= 0) {
         sceAudioOutOutput(audio_port_number, buff);
     }
+
+    return 0;
 }

@@ -373,7 +373,7 @@ int audio_thread(unsigned int args, void *argp)
 					// player.visualizer_rebuild = true;
 					// sceKernelUnlockMutex(visualizer_mutex, 1);
 	
-					AudioInitOutput(samplerate, nsamples, channels);
+					AudioInitOutput(samplerate, channels, nsamples);
 					printf("Playing %s %s sample_rate %i channels %i\n", player.title, player.url, samplerate, channels);
 				}
 
