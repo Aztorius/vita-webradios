@@ -25,6 +25,7 @@ find_package(OpenSSL REQUIRED)
 add_executable(${PROJECT_NAME}
   src/main.cpp
   src/utils.cpp
+  src/audio/audio.c
   src/audio/mp3.c
   src/audio/aac.c
   src/m3u_parser/m3u.c

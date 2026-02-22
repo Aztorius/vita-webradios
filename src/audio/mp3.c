@@ -106,9 +106,6 @@ SceUInt64 MP3_Seek(SceUInt64 index) {
 void MP3_Term(void) {
 	frames_read = 0;
 	
-	if (metadata.has_meta)
-		metadata.has_meta = SCE_FALSE;
-	
 	mpg123_close(mp3);
 	mpg123_delete(mp3);
 	mpg123_exit();

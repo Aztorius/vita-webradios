@@ -36,19 +36,3 @@ int copyfile(const char *destfile, const char *srcfile)
 	fclose(fout);
 	return 0;
 }
-
-bool is_samplerate_vita_compatible(int samplerate)
-{
-	int compatible_freqs[] = {8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000};
-	int samplerate_is_compatible = false;
-	int nsamples = 0;
-
-	for (int i = 0; i < sizeof(compatible_freqs); i++) {
-		if (samplerate == compatible_freqs[i]) {
-			samplerate_is_compatible = true;
-			break;
-		}
-	}
-
-	return samplerate_is_compatible;
-}

@@ -28,11 +28,12 @@
 #include "utils.hpp"
 
 extern "C" {
-#include "audio/mp3.h"
-#include "audio/aac.h"
-#include "m3u_parser/m3u.h"
+	#include "audio/audio.h"
+	#include "audio/mp3.h"
+	#include "audio/aac.h"
+	#include "m3u_parser/m3u.h"
 
-int _newlib_heap_size_user = 54 * 1024 * 1024;
+	int _newlib_heap_size_user = 54 * 1024 * 1024;
 }
 
 #define printf sceClibPrintf
@@ -297,7 +298,6 @@ int audio_thread(unsigned int args, void *argp)
 	unsigned int outsize = 0;
 	unsigned long channels = 0;
 	unsigned long samplerate = 0;
-	int port = -1;
 	int ret = 0;
 
 	bool aac_initialized = false;
@@ -351,26 +351,15 @@ int audio_thread(unsigned int args, void *argp)
 				if (ret == -11) {
 					printf("MP3 init ---\n");
 					// New format, close old output if necessary
-					if (port >= 0) {
-						sceAudioOutReleasePort(port);
-						port = -1;
-					}
+					AudioFreeOutput();
 	
 					channels = MP3_GetChannels();
 					samplerate = MP3_GetSampleRate();
 					int nsamples = 0;
 	
-					if (!is_samplerate_vita_compatible(samplerate)) {
-						printf("Samplerate %i is not compatible\n", samplerate);
-						continue;
-					}
-	
-					SceAudioOutMode channels_mode = SCE_AUDIO_OUT_MODE_STEREO;
 					if (channels == 1) {
-						channels_mode = SCE_AUDIO_OUT_MODE_MONO;
 						nsamples = BUFFER_LENGTH >> 1; // 2 bytes per sample in mono mode
 					} else if (channels == 2) {
-						channels_mode = SCE_AUDIO_OUT_MODE_STEREO;
 						nsamples = BUFFER_LENGTH >> 2; // 4 bytes per sample in stereo mode (2x2)
 					} else {
 						printf("Wrong number of channel in stream !");
@@ -384,18 +373,8 @@ int audio_thread(unsigned int args, void *argp)
 					// player.visualizer_rebuild = true;
 					// sceKernelUnlockMutex(visualizer_mutex, 1);
 	
-					port = sceAudioOutOpenPort(SCE_AUDIO_OUT_PORT_TYPE_BGM, nsamples, samplerate, channels_mode);
-					if (port < 0) {
-						printf("Error on sceAudioOutOpenPort\n");
-					}
+					AudioInitOutput(samplerate, nsamples, channels);
 					printf("Playing %s %s sample_rate %i channels %i\n", player.title, player.url, samplerate, channels);
-					sceAudioOutSetConfig(port, -1, -1, channels_mode);
-					SceAudioOutChannelFlag flags = (SceAudioOutChannelFlag)(SCE_AUDIO_VOLUME_FLAG_L_CH & SCE_AUDIO_VOLUME_FLAG_R_CH);
-					int vol = SCE_AUDIO_VOLUME_0DB;
-					int volumes[2] = {vol, vol};
-					if (sceAudioOutSetVolume(port, flags, volumes)) {
-						printf("Error setting volume\n");
-					}
 				}
 
 				if (outsize > 0 && ret != -11) {
@@ -404,9 +383,7 @@ int audio_thread(unsigned int args, void *argp)
 					// neon_fft_fill_buffer(player.visualizer_config, (int16_t*)outbuffer, outsize / (2 * channels));
 					// sceKernelUnlockMutex(visualizer_mutex, 1);
 	
-					if (port >= 0) {
-						sceAudioOutOutput(port, outbuffer);
-					}
+					AudioOutOutput(outbuffer);
 				}
 
 				sceKernelDelayThread(1000);
@@ -420,12 +397,7 @@ int audio_thread(unsigned int args, void *argp)
 			} while (!ret);
 
 			MP3_Term();
-
-			if (port >= 0) {
-				// Close audio port
-				sceAudioOutReleasePort(port);
-				port = -1;
-			}
+			AudioFreeOutput();
 		} else if (player.audio_type == AUDIO_FORMAT_AAC) {
 			printf("New AAC detected\n");
 			aac_initialized = false;
@@ -488,23 +460,13 @@ int audio_thread(unsigned int args, void *argp)
 							return -1;
 						}
 
-						if (port >= 0) {
-							sceAudioOutReleasePort(port);
-						}
-
-						if (!is_samplerate_vita_compatible(samplerate)) {
-							printf("Samplerate %i is not compatible\n", samplerate);
-							break;
-						}
+						AudioFreeOutput();
 
 						int nsamples = 0;
 
-						SceAudioOutMode channels_mode = SCE_AUDIO_OUT_MODE_STEREO;
 						if (channels == 1) {
-							channels_mode = SCE_AUDIO_OUT_MODE_MONO;
 							nsamples = BUFFER_LENGTH >> 1; // 2 bytes per sample in mono mode
 						} else {
-							channels_mode = SCE_AUDIO_OUT_MODE_STEREO;
 							nsamples = BUFFER_LENGTH >> 2; // 4 bytes per sample in stereo mode (2x2)
 						}
 
@@ -516,10 +478,7 @@ int audio_thread(unsigned int args, void *argp)
 						aac_initialized = true;
 
 						// AAC always works with 1024 samples
-						port = sceAudioOutOpenPort(SCE_AUDIO_OUT_PORT_TYPE_BGM, 1024, samplerate, channels_mode);
-						if (!port) {
-							printf("Error while opening port\n");
-						}
+						AudioInitOutput(samplerate, channels, 1024);
 						printf("Playing %s %s sample_rate %i channels %i\n", player.title, player.url, samplerate, channels);
 
 						sceKernelDelayThread(1000000); // 1000ms delay to have some buffer
@@ -532,9 +491,7 @@ int audio_thread(unsigned int args, void *argp)
 						// sceKernelLockMutex(visualizer_mutex, 1, NULL);
 						// neon_fft_fill_buffer(player.visualizer_config, (int16_t*)pcm, 1024 / channels);
 						// sceKernelUnlockMutex(visualizer_mutex, 1);
-						if (port >= 0) {
-							sceAudioOutOutput(port, pcm);
-						}
+						AudioOutOutput(pcm);
 					}
 
 					sceKernelLockMutex(audio_mutex, 1, NULL);
@@ -552,9 +509,7 @@ int audio_thread(unsigned int args, void *argp)
 				NeAACDecClose(aac_decoder);
 				aac_decoder = NULL;
 				aac_initialized = false;
-				// Close audio port
-				sceAudioOutReleasePort(port);
-				port = -1;
+				AudioFreeOutput();
 			}
 		}
 
