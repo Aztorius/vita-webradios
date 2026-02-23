@@ -452,7 +452,7 @@ int audio_thread(unsigned int args, void *argp)
 					NeAACDecFrameInfo aac_frame_info;
 					void *output_buffer = NULL;
 					if (aac_initialized && !AAC_Decode(audio_chunk, count, &aac_frame_info, &output_buffer) && aac_frame_info.samples > 0) {
-						if (!aac_initialized_step2 || aac_frame_info.samplerate != player.samplerate) {
+						if (!aac_initialized_step2 || aac_frame_info.samplerate != player.samplerate || aac_frame_info.channels != player.nb_channels) {
 							samplerate = aac_frame_info.samplerate;
 							player.samplerate = aac_frame_info.samplerate;
 							player.nb_channels = aac_frame_info.channels;
