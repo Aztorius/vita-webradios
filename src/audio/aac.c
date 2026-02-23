@@ -42,6 +42,8 @@ int AAC_Init(unsigned char *init_buffer, unsigned long init_buffer_size, int *nb
 {
     AAC_Free();
 
+    printf("FAAD2 capabilities=0x%x\n", NeAACDecGetCapabilities());
+
     // Init faad2 for AAC
     aac_decoder = NeAACDecOpen();
     if (!aac_decoder) {
