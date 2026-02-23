@@ -29,7 +29,7 @@ int AudioInitOutput(int samplerate, int nb_channels, int nb_samples)
 
     audio_port_number = sceAudioOutOpenPort(SCE_AUDIO_OUT_PORT_TYPE_BGM, nb_samples, samplerate, channels_mode);
     if (audio_port_number < 0) {
-        printf("Error while opening port\n");
+        printf("Error while opening port: nb_samples=%i,samplerate=%i,channels_mode=%i\n", nb_samples, samplerate, channels_mode);
         return 1;
     }
 

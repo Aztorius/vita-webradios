@@ -302,6 +302,7 @@ int audio_thread(unsigned int args, void *argp)
 	int ret = 0;
 
 	bool aac_initialized = false;
+	bool aac_initialized_step2 = false;
 	const char *current_url = NULL;
 
 	// Main audio loop
@@ -401,6 +402,7 @@ int audio_thread(unsigned int args, void *argp)
 		} else if (player.audio_type == AUDIO_FORMAT_AAC) {
 			printf("New AAC detected\n");
 			aac_initialized = false;
+			aac_initialized_step2 = false;
 
 			while (player.state == PLAYER_STATE_PLAYING) {
 				int count = 0;
@@ -440,34 +442,42 @@ int audio_thread(unsigned int args, void *argp)
 					sceKernelUnlockMutex(audio_mutex, 1);
 
 					if (!aac_initialized) {
-						AAC_Init(audio_chunk, count, &channels, &samplerate);
-						AudioFreeOutput();
-
-						player.samplerate = samplerate;
-						player.nb_channels = channels;
-						// AAC always works with 1024 samples
-						player.nb_samples = 1024;
-						sceKernelLockMutex(visualizer_mutex, 1, NULL);
-						player.visualizer_rebuild = true;
-						sceKernelUnlockMutex(visualizer_mutex, 1);
-
-						aac_initialized = true;
-
-						// AAC always works with 1024 samples
-						AudioInitOutput(samplerate, channels, 1024);
-						printf("Playing %s %s sample_rate %i channels %i\n", player.title, player.url, samplerate, channels);
-
-						sceKernelDelayThread(500000); // 500ms delay to have some buffer
+						if (!AAC_Init(audio_chunk, count, &channels, &samplerate)) {
+							AudioFreeOutput();
+							aac_initialized = true;
+						}
 					}
 
 					// We have a complete frame and FAAD2 is initialized, let's decode and play
-					unsigned long read_samples = 0;
+					NeAACDecFrameInfo aac_frame_info;
 					void *output_buffer = NULL;
-					if (!AAC_Decode(audio_chunk, count, &read_samples, &output_buffer) && read_samples > 0 && aac_initialized) {
-						sceKernelLockMutex(visualizer_mutex, 1, NULL);
-						neon_fft_fill_buffer(player.visualizer_config, (int16_t*)output_buffer, 1024);
-						sceKernelUnlockMutex(visualizer_mutex, 1);
-						AudioOutOutput(output_buffer);
+					if (aac_initialized && !AAC_Decode(audio_chunk, count, &aac_frame_info, &output_buffer) && aac_frame_info.samples > 0) {
+						if (!aac_initialized_step2 || aac_frame_info.samplerate != player.samplerate) {
+							samplerate = aac_frame_info.samplerate;
+							player.samplerate = aac_frame_info.samplerate;
+							player.nb_channels = aac_frame_info.channels;
+							player.nb_samples = aac_frame_info.samples / aac_frame_info.channels; // Most of the time equal to 1024
+							printf("Here ! samplerate=%i,channels=%i,nb_samples=%i\n", aac_frame_info.samplerate, aac_frame_info.channels, player.nb_samples);
+
+							// sceKernelLockMutex(visualizer_mutex, 1, NULL);
+							// player.visualizer_rebuild = true;
+							// sceKernelUnlockMutex(visualizer_mutex, 1);
+
+							aac_initialized_step2 = true;
+
+							// AAC always works with 1024 samples
+							AudioInitOutput(aac_frame_info.samplerate, aac_frame_info.channels, 1024);
+							printf("Playing %s %s sample_rate %i channels %i\n", player.title, player.url, samplerate, channels);
+
+							// sceKernelDelayThread(500000); // 500ms delay to have some buffer
+						}
+
+						if (aac_initialized_step2) {
+						// 	sceKernelLockMutex(visualizer_mutex, 1, NULL);
+						// 	neon_fft_fill_buffer(player.visualizer_config, (int16_t*)output_buffer, 1024);
+						// 	sceKernelUnlockMutex(visualizer_mutex, 1);
+							AudioOutOutput(output_buffer);
+						}
 					}
 
 					sceKernelLockMutex(audio_mutex, 1, NULL);
@@ -480,6 +490,7 @@ int audio_thread(unsigned int args, void *argp)
 
 			AAC_Free();
 			aac_initialized = false;
+			aac_initialized_step2 = false;
 			AudioFreeOutput();
 		}
 

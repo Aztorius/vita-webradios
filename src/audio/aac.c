@@ -44,8 +44,11 @@ int AAC_Init(unsigned char *init_buffer, unsigned long init_buffer_size, int *nb
 
     // Init faad2 for AAC
     aac_decoder = NeAACDecOpen();
+    if (!aac_decoder) {
+        printf("Error with NeAACDecOpen\n");
+        return 1;
+    }
     NeAACDecConfigurationPtr aac_cfg = NeAACDecGetCurrentConfiguration(aac_decoder);
-    aac_cfg->defSampleRate = 0;
     aac_cfg->outputFormat = FAAD_FMT_16BIT;
     aac_cfg->downMatrix = 1; // A 5.1 channels should be downmatrixed to 2.0 channels for Vita
     if (!NeAACDecSetConfiguration(aac_decoder, aac_cfg)) {
@@ -87,26 +90,23 @@ int AAC_Free()
     return 0;
 }
 
-int AAC_Decode(unsigned char *buffer, unsigned long buffer_size, unsigned long *samples, void **output_buffer)
+int AAC_Decode(unsigned char *buffer, unsigned long buffer_size, NeAACDecFrameInfo *aac_frame_info, void **output_buffer)
 {
     if (!aac_decoder) {
         printf("Cannot decode on unitialized AAC\n");
         return 1;
     }
 
-    NeAACDecFrameInfo aac_frame_info;
-	void *pcm = NeAACDecDecode(aac_decoder, &aac_frame_info, buffer, buffer_size);
+	void *pcm = NeAACDecDecode(aac_decoder, aac_frame_info, buffer, buffer_size);
 
-    if (aac_frame_info.error) {
+    if (aac_frame_info->error) {
+        printf("NeAACDecDecode error=%i\n", aac_frame_info->error);
         return 1;
     }
 
     if (!pcm) {
+        printf("NeAACDecDecode return NULL buffer\n");
         return 1;
-    }
-
-    if (samples) {
-        *samples = aac_frame_info.samples;
     }
 
     if (output_buffer) {

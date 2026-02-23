@@ -16,4 +16,4 @@ int parse_adts_header(const uint8_t *data, size_t size, adts_header_t *out);
 
 int AAC_Init(unsigned char *init_buffer, unsigned long init_buffer_size, int *nb_channels, int *samplerate);
 int AAC_Free();
-int AAC_Decode(unsigned char *buffer, unsigned long buffer_size, unsigned long *samples, void **output_buffer);
+int AAC_Decode(unsigned char *buffer, unsigned long buffer_size, NeAACDecFrameInfo *aac_frame_info, void **output_buffer);
