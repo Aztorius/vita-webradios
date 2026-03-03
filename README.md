@@ -15,6 +15,7 @@ https://itch.io/jam/reihen-ps-vita-homebrew-contest
 - GUI with webradio listing
 - Live Spectrum visualizer
 - Live song title parsing (with ICY metadata)
+- Disabling autosuspend when playing audio
 
 ## Limitations
 
