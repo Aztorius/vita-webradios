@@ -57,6 +57,9 @@ target_link_libraries(${PROJECT_NAME}
   ScePaf_stub
   SceSysmem_stub
   SceLibKernel_stub
+  ScePower_stub
+  SceProcessmgr_stub
+  SceShellSvc_stub
   mpg123
   NE10
   mathneon

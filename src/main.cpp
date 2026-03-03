@@ -12,6 +12,7 @@
 #include <psp2/ctrl.h>
 #include <psp2/audiodec.h>
 #include <psp2/audioout.h>
+#include <psp2/display.h>
 #include <psp2/kernel/clib.h>
 #include <psp2/kernel/processmgr.h>
 #include <psp2/kernel/sysmem.h>
@@ -314,6 +315,8 @@ int audio_thread(unsigned int args, void *argp)
 			continue;
 		}
 
+		Utils_LockPower();
+
 		current_url = player.url;
 
 		if (player.audio_type == AUDIO_FORMAT_MP3) {
@@ -493,6 +496,7 @@ int audio_thread(unsigned int args, void *argp)
 			AudioFreeOutput();
 		}
 
+		Utils_UnlockPower();
 		sceKernelDelayThread(100000);
     }
 
@@ -614,6 +618,8 @@ int main(void)
 		return 1;
 	}
 
+	Utils_InitPowerTick();
+
 	SceCtrlData ctrl_peek, ctrl_press;
 
 	int thid = 0;
@@ -713,6 +719,8 @@ int main(void)
 						ImGui::Text("Playing \"%s\" from %s", player.song_title, player.title);
 					} else if (player.url && player.title && player.state == PLAYER_STATE_PLAYING) {
 						ImGui::Text("Playing %s from %s", player.title, player.url);
+					} else if (player.url && player.state == PLAYER_STATE_PLAYING) {
+						ImGui::Text("Playing %s", player.url);
 					} else if (player.url && player.title && player.state == PLAYER_STATE_NEW) {
 						ImGui::Text("Connecting to %s from %s", player.title, player.url);
 					} else {
@@ -798,7 +806,7 @@ int main(void)
 						ImGui::Text("%s", player.song_title);
 					}
 				} else if (player.state == PLAYER_STATE_WAITING) {
-					ImGui::Text("Standbye");
+					ImGui::Text("Standby");
 				} else if (player.state == PLAYER_STATE_NEW) {
 					ImGui::Text("Connecting...");
 				}
