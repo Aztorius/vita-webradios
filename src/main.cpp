@@ -573,19 +573,12 @@ int main(void)
 	}
 
 	sceSysmoduleLoadModule(SCE_SYSMODULE_NET);
-	sceSysmoduleLoadModule(SCE_SYSMODULE_HTTPS);
 
 	SceNetInitParam net_init_param;
-	net_init_param.size = 16 * 1024;
+	int net_memory_size = 4 * 1024 * 1024;
+	net_init_param.memory = malloc(net_memory_size);
+	net_init_param.size = net_memory_size;
 	net_init_param.flags = 0;
-
-	SceUID memid = sceKernelAllocMemBlock("SceNetMemory", 0x0C20D060, net_init_param.size, NULL);
-	if(memid < 0){
-		sceClibPrintf("sceKernelAllocMemBlock failed (0x%X)\n", memid);
-		return memid;
-	}
-
-	sceKernelGetMemBlockBase(memid, &net_init_param.memory);
 
 	int res;
 	res = sceNetInit(&net_init_param);
@@ -905,8 +898,6 @@ int main(void)
 
 	sceNetCtlTerm();
 	sceNetTerm();
-
-	sceSysmoduleUnloadModule(SCE_SYSMODULE_HTTPS);
 	sceSysmoduleUnloadModule(SCE_SYSMODULE_NET);
 
 	m3u_file_free(m3ufile);
