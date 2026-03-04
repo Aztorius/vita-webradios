@@ -418,7 +418,7 @@ int audio_thread(unsigned int args, void *argp)
 
 				sceKernelLockMutex(audio_mutex, 1, NULL);
 
-				while (read_pos != write_pos && count < AUDIO_CHUNK) {
+				while (read_pos != write_pos && count < AUDIO_CHUNK && player.state == PLAYER_STATE_PLAYING) {
 					// Read one byte from stream to the chunk
 					audio_chunk[count++] = stream_buffer[read_pos];
 					read_pos = (read_pos + 1) % STREAM_BUFFER_SIZE;
