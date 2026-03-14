@@ -8,14 +8,13 @@ https://itch.io/jam/reihen-ps-vita-homebrew-contest
 ## Features
 
 - Play a list of webradio
-- Webradios listed in ux0:/data/webradio/playlist.m3u
+- Webradios list in ux0:/data/webradio/playlist.m3u
 - MP3 and AAC support
 - AAC+/HE-AAC partial support (some glitches may occur)
 - HTTP and HTTPS support (with iTLS-Enso https://github.com/SKGleba/iTLS-Enso)
-- GUI with webradio listing
 - Live Spectrum visualizer
 - Live song title parsing (with ICY metadata)
-- Disabling autosuspend when playing audio
+- Automatically disabling autosuspend when playing audio
 
 ## Limitations
 
