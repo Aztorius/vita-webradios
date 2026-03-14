@@ -6,6 +6,8 @@ v1.3
 - Automatic audio format detection and decoding
 - Prevent auto suspend when playing audio
 - Triangle now also prevent other buttons press
+- L trigger is now enabled to go on previous station
+- You can now add a webradio and its name from the GUI
 - Fix build with missing vglEnd() on latest vitasdk
 - A lot of code rewrite and cleanup
 
