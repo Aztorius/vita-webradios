@@ -679,28 +679,6 @@ int main(void)
 				}
 
 				ImGui::SameLine();
-				if (ImGui::Button("Add", ImVec2(0, 30))) {
-					std::string title = "Add a webradio URL";
-					std::string initial_text = "http://";
-
-					char *url = gui_open_text_dialog(title, initial_text);
-					if (url) {
-						title = "Choose a webradio name";
-						initial_text = "";
-						char *webradio_title = gui_open_text_dialog(title, initial_text);
-
-						printf("Adding new entry with URL %s\n", url);
-						m3u_add_entry(m3ufile, url, NULL, webradio_title);
-						m3u_write(m3ufile);
-
-						current_entry = m3ufile->last_entry;
-						player.url = current_entry->url;
-						player.title = current_entry->title;
-						player.state = PLAYER_STATE_NEW;
-					}
-				}
-
-				ImGui::SameLine();
 				if (ImGui::Button("Bars", ImVec2(0, 30))) {
 					player.view = PLAYER_VIEW_VISUALIZER_BARS;
 				}
@@ -718,8 +696,13 @@ int main(void)
 				ImGui::Separator();
 
 				if (player.view == PLAYER_VIEW_SETTINGS) {
-					ImGui::Text("Add your webradios to ux0:/data/webradio/playlist.m3u");
-					ImGui::Text("(circle) toggle visualization, (square) stop audio, (cross) play selected radio, (triangle) black screen, (R) next radio");
+					ImGui::Text("Add your webradios to ux0:/data/webradio/playlist.m3u or with Add button");
+					ImGui::Text("circle : change menu");
+					ImGui::Text("square : stop audio");
+					ImGui::Text("cross/touch : play selected radio");
+					ImGui::Text("triangle : black screen and lock buttons");
+					ImGui::Text("L trigger : previous radio");
+					ImGui::Text("R trigger : next radio");
 				} else {
 					if (player.song_title && player.title && player.state == PLAYER_STATE_PLAYING) {
 						ImGui::Text("Playing \"%s\" from %s", player.song_title, player.title);
@@ -734,6 +717,28 @@ int main(void)
 					}
 	
 					ImGui::Separator();
+
+					if (ImGui::Button("Add", ImVec2(0, 30))) {
+						std::string title = "Add a webradio URL";
+						std::string initial_text = "http://";
+
+						char *url = gui_open_text_dialog(title, initial_text);
+						if (url && strlen(url) > 0) {
+							title = "Choose a webradio name";
+							initial_text = "";
+							char *webradio_title = gui_open_text_dialog(title, initial_text);
+
+							printf("Adding new entry with URL %s\n", url);
+							m3u_add_entry(m3ufile, url, NULL, webradio_title);
+							m3u_write(m3ufile);
+
+							current_entry = m3ufile->last_entry;
+							player.url = current_entry->url;
+							player.title = current_entry->title;
+							player.state = PLAYER_STATE_NEW;
+						}
+					}
+
 					m3u_entry *drawEntry = m3ufile->first_entry;
 					while (drawEntry) {
 						const char *button_text = NULL;

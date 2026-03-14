@@ -65,7 +65,7 @@ int m3u_parse(const char *filepath, struct m3u_file **m3ufile_p)
                         printf("Cannot allocate playlist name\n");
                         return -1;
                     }
-                    strcpy(m3ufile->playlist_name, buffer + 8);
+                    strcpy(m3ufile->playlist_name, buffer + 10);
                 }
             } else if (str_starts_with(buffer, "#EXTINF:")) {
                 char *logo_str = strstr(buffer, " tvg-logo=\"");
@@ -209,9 +209,9 @@ int m3u_write(struct m3u_file *m3ufile) {
 
     while (entry != NULL) {
         if (entry->logo_url || entry->title) {
-            fprintf(fp, "#EXTINF:-1 ");
+            fprintf(fp, "#EXTINF:-1");
             if (entry->logo_url) {
-                fprintf(fp, "tvg-logo=\"%s\"", entry->logo_url);
+                fprintf(fp, " tvg-logo=\"%s\"", entry->logo_url);
             }
             if (entry->title) {
                 fprintf(fp, ", %s", entry->title);

@@ -57,6 +57,8 @@ char *gui_open_text_dialog(std::string title, std::string initial_text)
         
         if (text)
             strncpy(text, utf8_str.c_str(), GUI_MAX_TEXT_SIZE);
+    } else {
+        text[0] = '\0';
     }
 
     sceImeDialogTerm();
