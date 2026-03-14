@@ -45,7 +45,7 @@ neon_fft_config *neon_fft_init(int nbsamples, int samplerate, int channel_mode, 
         printf("Failed to initialise Ne10.\n");
         free(cfg);
         return nullptr;
-    }    
+    }
 
     // Prepare the real-to-complex single precision floating point FFT configuration
     // structure for inputs of length `nbsamples`. (You need only generate this once for a
@@ -113,13 +113,18 @@ void neon_fft_free(neon_fft_config *cfg)
  */
 void neon_fft_fill_buffer(neon_fft_config *cfg, int16_t *raw_data, int nbsamples)
 {
+    if (!cfg) {
+        printf("neon_fft_fill_buffer called while not yet initialised\n");
+        return;
+    }
+
     if (nbsamples == 0) {
         printf("neon_fft_fill_src_buffer: nbsamples equals to zero\n");
         return;
     }
 
     if (nbsamples > cfg->nbsamples) {
-        printf("neon_fft_fill_src_buffer: too much samples %i\n", nbsamples);
+        printf("neon_fft_fill_src_buffer: too much samples nbsamples=%i cfg->nbsamples=%i\n", nbsamples, cfg->nbsamples);
         return;
     }
  

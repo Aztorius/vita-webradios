@@ -368,10 +368,10 @@ int audio_thread(unsigned int args, void *argp)
 						continue;
 					}
 	
+					sceKernelLockMutex(visualizer_mutex, 1, NULL);
 					player.samplerate = samplerate;
 					player.nb_channels = channels;
 					player.nb_samples = nsamples;
-					sceKernelLockMutex(visualizer_mutex, 1, NULL);
 					player.visualizer_rebuild = true;
 					sceKernelUnlockMutex(visualizer_mutex, 1);
 	
