@@ -185,6 +185,7 @@ void m3u_add_entry(struct m3u_file *m3ufile, char *url, char *logo_url, char *ti
 
     entry->previous = m3ufile->last_entry;
     entry->next = NULL;
+    entry->previous->next = entry;
 
     m3ufile->last_entry = entry;
 }
