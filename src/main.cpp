@@ -59,13 +59,6 @@ enum player_state {
 	PLAYER_STATE_STOPPING,
 };
 
-enum audio_format {
-	AUDIO_FORMAT_UNKNOWN,
-	AUDIO_FORMAT_MP3,
-	AUDIO_FORMAT_AAC,
-	AUDIO_FORMAT_OGG,
-};
-
 struct player {
 	enum player_state state;
 	player_view view;
@@ -531,8 +524,6 @@ void parse_icy_metadata()
     icy_metadata_ready = 0;
 }
 
-
-
 int main(void)
 {
 	vglInitExtended(0, 960, 544, 0x1000000, SCE_GXM_MULTISAMPLE_4X);
@@ -792,9 +783,15 @@ int main(void)
 						player.new_song_title = false;
 					}
 	
-					if (player.song_title && ImGui::GetTime() - title_show_start_time < 10.0) {
-						// Show the song title for 10 seconds
-						ImGui::Text("%s", player.song_title);
+					if (ImGui::GetTime() - title_show_start_time < 10.0) {
+						// Show song title and format info for 10 seconds
+						if (player.song_title) {
+							ImGui::Text("%s", player.song_title);
+						}
+
+						if (player.audio_type && player.samplerate && player.nb_channels) {
+							ImGui::Text("%s %iHz %i channels", AudioFormatToString(player.audio_type), player.samplerate, player.nb_channels);
+						}
 					}
 				} else if (player.state == PLAYER_STATE_WAITING) {
 					ImGui::Text("Standby");

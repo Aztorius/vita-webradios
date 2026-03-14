@@ -92,3 +92,18 @@ int AudioOutOutput(const void *buff)
 
     return 0;
 }
+
+char *AudioFormatToString(enum audio_format format)
+{
+    switch (format)
+    {
+    case AUDIO_FORMAT_AAC:
+        return "AAC";
+    case AUDIO_FORMAT_MP3:
+        return "MP3";
+    case AUDIO_FORMAT_OGG:
+        return "OGG";
+    default:
+        return "UNKNOWN";
+    }
+}
