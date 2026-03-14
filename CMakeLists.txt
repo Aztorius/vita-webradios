@@ -28,6 +28,7 @@ add_executable(${PROJECT_NAME}
   src/audio/audio.c
   src/audio/mp3.c
   src/audio/aac.c
+  src/gui/gui.cpp
   src/m3u_parser/m3u.c
   src/visualizer/neon_fft.cpp
 )

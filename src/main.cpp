@@ -3,6 +3,9 @@
 #include <string.h>
 #include <strings.h>
 #include <math.h>
+#include <string>
+#include <locale>
+#include <codecvt>
 
 #include <imgui_vita.h>
 #include <vitaGL.h>
@@ -25,8 +28,9 @@
 #include <psp2/paf.h>
 #include <psp2/sysmodule.h>
 
-#include "visualizer/neon_fft.hpp"
+#include "gui/gui.hpp"
 #include "utils.hpp"
+#include "visualizer/neon_fft.hpp"
 
 extern "C" {
 	#include "audio/audio.h"
@@ -639,11 +643,15 @@ int main(void)
 	player.title = current_entry->title;
 	player.state = PLAYER_STATE_NEW;
  
+	// Init native dialog
+	gui_init_ime();
+
 	// Main loop
 	bool done = false;
 	static bool show_main_widget = true;
 	static bool show_visualization = false;
 	int title_show_start_time = 0;
+
 	static ImGuiWindowFlags flags = (ImGuiWindowFlags)(ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar);
 	while (!done) {
 		ImGui_ImplVitaGL_NewFrame();
@@ -674,6 +682,24 @@ int main(void)
 			{
 				if (ImGui::Button("Webradios", ImVec2(0, 30))) {
 					player.view = PLAYER_VIEW_MENU;
+				}
+
+				ImGui::SameLine();
+				if (ImGui::Button("Add", ImVec2(0, 30))) {
+					std::string title = "Add a webradio URL";
+					std::string intial_text = "http://";
+
+					char *url = gui_open_text_dialog(title, intial_text);
+					if (url) {
+						printf("Adding new entry with URL %s\n", url);
+						m3u_add_entry(m3ufile, url, NULL, NULL);
+						m3u_write(m3ufile);
+
+						current_entry = m3ufile->last_entry;
+						player.url = current_entry->url;
+						player.title = current_entry->title;
+						player.state = PLAYER_STATE_NEW;
+					}
 				}
 
 				ImGui::SameLine();

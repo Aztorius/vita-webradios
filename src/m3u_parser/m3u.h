@@ -20,3 +20,4 @@ struct m3u_file {
 int m3u_parse(const char *filepath, struct m3u_file **m3ufile_p);
 void m3u_file_free(struct m3u_file *m3ufile);
 void m3u_add_entry(struct m3u_file *m3ufile, char *url, char *logo_url, char *title);
+int m3u_write(struct m3u_file *m3ufile);

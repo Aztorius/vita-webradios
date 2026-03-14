@@ -189,3 +189,42 @@ void m3u_add_entry(struct m3u_file *m3ufile, char *url, char *logo_url, char *ti
 
     m3ufile->last_entry = entry;
 }
+
+int m3u_write(struct m3u_file *m3ufile) {
+    FILE *fp = NULL;
+
+    // Read the m3u file and allocate entries
+    fp = fopen(m3ufile->filepath, "w");
+    if (!fp) {
+        printf("Could not open file %s\n", m3ufile->filepath);
+        return -1;
+    }
+
+    fprintf(fp, "#EXTM3U\n");
+    if (m3ufile->playlist_name) {
+        fprintf(fp, "#PLAYLIST:%s\n", m3ufile->playlist_name);
+    }
+
+    struct m3u_entry *entry = m3ufile->first_entry;
+
+    while (entry != NULL) {
+        if (entry->logo_url || entry->title) {
+            fprintf(fp, "#EXTINF:-1 ");
+            if (entry->logo_url) {
+                fprintf(fp, "tvg-logo=\"%s\" ", entry->logo_url);
+            }
+            if (entry->title) {
+                fprintf(fp, ", %s", entry->title);
+            }
+            fprintf(fp, "\n");
+        }
+
+        if (entry->url) {
+            fprintf(fp, "%s\n", entry->url);
+        }
+
+        entry = entry->next;
+    }
+
+    fclose(fp);
+}
