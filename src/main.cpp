@@ -630,18 +630,12 @@ int main(void)
 	player.visualizer_rebuild = false;
 	player.song_title = nullptr;
 	player.new_song_title = false;
+	player.url = NULL;
+	player.title = NULL;
 	sceKernelStartThread(player.player_thread_id, 0, 0);
 	sceKernelStartThread(player.http_thread_id, 0, 0);
 
-	struct m3u_entry *current_entry = m3ufile->first_entry;
-	if (!current_entry) {
-		printf("File has no URL\n");
-		return 1;
-	}
-
-	player.url = current_entry->url;
-	player.title = current_entry->title;
-	player.state = PLAYER_STATE_NEW;
+	struct m3u_entry *current_entry = NULL;
  
 	// Init native dialog
 	gui_init_ime();
@@ -687,12 +681,16 @@ int main(void)
 				ImGui::SameLine();
 				if (ImGui::Button("Add", ImVec2(0, 30))) {
 					std::string title = "Add a webradio URL";
-					std::string intial_text = "http://";
+					std::string initial_text = "http://";
 
-					char *url = gui_open_text_dialog(title, intial_text);
+					char *url = gui_open_text_dialog(title, initial_text);
 					if (url) {
+						title = "Choose a webradio name";
+						initial_text = "";
+						char *webradio_title = gui_open_text_dialog(title, initial_text);
+
 						printf("Adding new entry with URL %s\n", url);
-						m3u_add_entry(m3ufile, url, NULL, NULL);
+						m3u_add_entry(m3ufile, url, NULL, webradio_title);
 						m3u_write(m3ufile);
 
 						current_entry = m3ufile->last_entry;

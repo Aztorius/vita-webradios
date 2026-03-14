@@ -211,7 +211,7 @@ int m3u_write(struct m3u_file *m3ufile) {
         if (entry->logo_url || entry->title) {
             fprintf(fp, "#EXTINF:-1 ");
             if (entry->logo_url) {
-                fprintf(fp, "tvg-logo=\"%s\" ", entry->logo_url);
+                fprintf(fp, "tvg-logo=\"%s\"", entry->logo_url);
             }
             if (entry->title) {
                 fprintf(fp, ", %s", entry->title);
