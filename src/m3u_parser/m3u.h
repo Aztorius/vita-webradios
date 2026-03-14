@@ -14,7 +14,9 @@ struct m3u_file {
     char *playlist_name;
     int nb_entries;
     struct m3u_entry *first_entry;
+    struct m3u_entry *last_entry;
 };
 
 int m3u_parse(const char *filepath, struct m3u_file **m3ufile_p);
 void m3u_file_free(struct m3u_file *m3ufile);
+void m3u_add_entry(struct m3u_file *m3ufile, char *url, char *logo_url, char *title);

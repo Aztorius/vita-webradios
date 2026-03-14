@@ -840,17 +840,25 @@ int main(void)
 		} else if (ctrl_press.buttons & SCE_CTRL_RTRIGGER) {
 			if (current_entry && current_entry->next) {
 				current_entry = current_entry->next;
-				printf("Playing %s %s\n", current_entry->title, current_entry->url);
-				player.url = current_entry->url;
-				player.title = current_entry->title;
-				player.state = PLAYER_STATE_NEW;
 			} else if (m3ufile->first_entry) {
 				current_entry = m3ufile->first_entry;
-				printf("Playing %s %s\n", current_entry->title, current_entry->url);
-				player.url = current_entry->url;
-				player.title = current_entry->title;
-				player.state = PLAYER_STATE_NEW;
 			}
+
+			printf("Playing %s %s\n", current_entry->title, current_entry->url);
+			player.url = current_entry->url;
+			player.title = current_entry->title;
+			player.state = PLAYER_STATE_NEW;
+		} else if (ctrl_press.buttons & SCE_CTRL_LTRIGGER) {
+			if (current_entry && current_entry->previous) {
+				current_entry = current_entry->previous;
+			} else if (m3ufile->last_entry) {
+				current_entry = m3ufile->last_entry;
+			}
+
+			printf("Playing %s %s\n", current_entry->title, current_entry->url);
+			player.url = current_entry->url;
+			player.title = current_entry->title;
+			player.state = PLAYER_STATE_NEW;
 		}
 
 		// Rendering

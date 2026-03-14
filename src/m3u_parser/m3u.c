@@ -122,15 +122,13 @@ int m3u_parse(const char *filepath, struct m3u_file **m3ufile_p)
 
             if (!m3ufile->first_entry) {
                 m3ufile->first_entry = entry;
+                m3ufile->last_entry = entry;
             } else {
                 // Add entry at the end of chain
-                struct m3u_entry *entry_ptr = m3ufile->first_entry;
-                while (entry_ptr->next) {
-                    entry_ptr = entry_ptr->next;
-                }
-
+                struct m3u_entry *entry_ptr = m3ufile->last_entry;
                 entry_ptr->next = entry;
                 entry->previous = entry_ptr;
+                m3ufile->last_entry = entry;
             }
         }
     }
@@ -172,4 +170,21 @@ void m3u_file_free(struct m3u_file *m3ufile) {
     }
 
     free(m3ufile);
+}
+
+void m3u_add_entry(struct m3u_file *m3ufile, char *url, char *logo_url, char *title) {
+    struct m3u_entry *entry = malloc(sizeof(struct m3u_entry));
+    if (!entry) {
+        printf("Error allocating m3u_entry\n");
+        return;
+    }
+
+    entry->url = url;
+    entry->logo_url = logo_url;
+    entry->title = title;
+
+    entry->previous = m3ufile->last_entry;
+    entry->next = NULL;
+
+    m3ufile->last_entry = entry;
 }
