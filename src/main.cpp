@@ -545,8 +545,6 @@ int main(void)
 	// Setup style
 	ImGui::StyleColorsClassic();
 
-	bool show_demo_window = true;
-	bool show_another_window = false;
 	ImVec4 clear_color = ImVec4(0.0f, 0.0f, 0.0f, 1.00f);
 
 	ImGui_ImplVitaGL_TouchUsage(true);
